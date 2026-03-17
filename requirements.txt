@@ -1,0 +1,8 @@
+streamlit==1.32.0
+opencv-python==4.9.0.80
+ultralytics==8.1.24
+mediapipe==0.10.11
+insightface==0.7.3
+onnxruntime==1.17.0
+numpy
+pandas
