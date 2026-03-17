@@ -1,12 +1,10 @@
-streamlit==1.32.0
-opencv-python==4.9.0.80
-ultralytics==8.1.24
-mediapipe==0.10.11
-insightface==0.7.3
-onnxruntime==1.17.0
-numpy
-pandas
-fastapi
-uvicorn
-websockets
-python-multipart
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9       # for UploadFile in /enroll
+opencv-python>=4.9.0
+insightface>=0.7.3
+onnxruntime>=1.18.0           # swap for onnxruntime-gpu if NVIDIA GPU present
+ultralytics>=8.2.0            # YOLOv8 + ByteTrack
+mediapipe>=0.10.14            # activity detector heuristics
+numpy>=1.26.0
+Pillow>=10.0.0

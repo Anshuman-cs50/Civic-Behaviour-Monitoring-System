@@ -1,204 +1,169 @@
+// frontend/src/app/page.tsx
+// ─────────────────────────────────────────────────────────────
+// Main CBMS dashboard. Three-column layout:
+//   Left:   live video feed + connection status
+//   Centre: score trend chart (Recharts)
+//   Right:  alert feed + leaderboard
+//
+// TODO (Day 4): Fill in Recharts wiring.
+// ─────────────────────────────────────────────────────────────
+
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Camera, Trophy, Activity as ActivityIcon } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useCallback } from "react";
+import { useWebSocket } from "@/lib/useWebSocket";
+import { useCBMSStore, AlertEvent } from "@/store/useCBMSStore";
+import { AlertFeed }  from "@/components/ui/AlertFeed";
+import { Leaderboard } from "@/components/ui/Leaderboard";
 
-// --- CUSTOM HOOKS ---
-
-function useWebSocket(url: string) {
-  const [data, setData] = useState<any>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const socket = new WebSocket(url);
-    socketRef.current = socket;
-
-    socket.onmessage = (event) => {
-      try {
-        // Handle JSON alerts or Base64 images
-        const parsedData = event.data.startsWith("{") 
-          ? JSON.parse(event.data) 
-          : event.data;
-        setData(parsedData);
-      } catch (e) {
-        setData(event.data);
-      }
-    };
-
-    socket.onopen = () => console.log(`[WS] Connected to ${url}`);
-    socket.onerror = (error) => console.error(`[WS] Error (${url}):`, error);
-    socket.onclose = () => console.log(`[WS] Closed (${url})`);
-
-    return () => socket.close();
-  }, [url]);
-
-  return data;
-}
-
-// --- MAIN DASHBOARD ---
+// TODO (Day 4): import Recharts components
+// import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function Dashboard() {
-  const frameBase64 = useWebSocket("ws://localhost:8000/ws/video");
-  const latestAlert = useWebSocket("ws://localhost:8000/ws/alerts");
-  
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [scoreHistory, setScoreHistory] = useState<{ time: string; score: number }[]>([
-    { time: "00:00", score: 100 }
-  ]);
+  const {
+    latestFrame, setLatestFrame,
+    pushAlert,
+    scoreHistory,
+    videoConnected, setVideoConnected,
+    alertConnected, setAlertConnected,
+  } = useCBMSStore((s) => ({
+    latestFrame:        s.latestFrame,
+    setLatestFrame:     s.setLatestFrame,
+    pushAlert:          s.pushAlert,
+    scoreHistory:       s.scoreHistory,
+    videoConnected:     s.videoConnected,
+    setVideoConnected:  s.setVideoConnected,
+    alertConnected:     s.alertConnected,
+    setAlertConnected:  s.setAlertConnected,
+  }));
 
-  // Handle incoming alerts
-  useEffect(() => {
-    if (latestAlert && typeof latestAlert === "object") {
-      setAlerts((prev) => [latestAlert, ...prev].slice(0, 50));
-      setScoreHistory((prev) => {
-        const lastScore = prev.length > 0 ? prev[prev.length - 1].score : 100;
-        return [...prev, { time: latestAlert.timestamp, score: lastScore + latestAlert.score_delta }].slice(-20);
-      });
+  // ── Video WebSocket ───────────────────────────────────
+  const handleVideoMessage = useCallback((data: unknown) => {
+    const msg = data as { type: string; data: string };
+    if (msg.type === "frame") {
+      setLatestFrame(msg.data);
+      setVideoConnected(true);
     }
-  }, [latestAlert]);
+  }, [setLatestFrame, setVideoConnected]);
 
+  useWebSocket("ws://localhost:8000/ws/video", {
+    onMessage:      handleVideoMessage,
+    reconnectDelay: 2000,
+  });
+
+  // ── Alert WebSocket ───────────────────────────────────
+  const handleAlertMessage = useCallback((data: unknown) => {
+    const msg = data as { type: string } & AlertEvent;
+    if (msg.type === "alert") {
+      pushAlert(msg);
+      setAlertConnected(true);
+    }
+  }, [pushAlert, setAlertConnected]);
+
+  useWebSocket("ws://localhost:8000/ws/alerts", {
+    onMessage:      handleAlertMessage,
+    reconnectDelay: 2000,
+  });
+
+  // ── Render ────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <header className="flex justify-between items-center border-b border-slate-800 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg">
-              <Camera className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
-                Civic Behaviour Monitoring
-              </h1>
-              <p className="text-sm text-slate-400">Real-time surveillance & scoring pipeline</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 bg-emerald-400/10">
-              System Active
-            </Badge>
-            <div className="text-right">
-              <p className="text-xs text-slate-500 uppercase font-semibold">City Score Average</p>
-              <p className="text-xl font-mono text-indigo-400">
-                {scoreHistory[scoreHistory.length - 1]?.score || 100}
-              </p>
-            </div>
-          </div>
-        </header>
+    <main className="min-h-screen bg-zinc-950 text-zinc-100 p-4 font-mono">
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Video Section */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="bg-slate-900 border-slate-800 overflow-hidden shadow-2xl">
-              <CardHeader className="py-3 bg-slate-800/50">
-                <CardTitle className="text-sm font-medium flex items-center gap-2 text-slate-200">
-                  <Camera className="w-4 h-4 text-indigo-400" />
-                  Primary Stream - Zone A1
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 aspect-video bg-black flex items-center justify-center relative">
-                {frameBase64 ? (
-                  <img 
-                    src={`data:image/jpeg;base64,${frameBase64}`} 
-                    alt="Video Stream" 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-slate-600">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
-                    <p className="text-sm">Connecting to CV Backend...</p>
-                  </div>
-                )}
-                <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] font-mono text-red-500 border border-red-500/30 flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  REC LIVE
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-slate-200">Scoring Analytics (Historical Trend)</CardTitle>
-              </CardHeader>
-              <CardContent className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={scoreHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
-                      itemStyle={{ color: '#818cf8' }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="score" 
-                      stroke="#6366f1" 
-                      strokeWidth={2} 
-                      dot={{ fill: '#6366f1', r: 3 }} 
-                      activeDot={{ r: 5, strokeWidth: 0 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Activity Feed Section */}
-          <div className="space-y-6 flex flex-col">
-            <Card className="bg-slate-900 border-slate-800 flex-1 flex flex-col">
-              <CardHeader className="bg-slate-800/30">
-                <CardTitle className="text-sm font-medium flex items-center gap-2 text-slate-200">
-                  <ActivityIcon className="w-4 h-4 text-emerald-400" />
-                  Live Event Feed
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 p-0 overflow-hidden">
-                <ScrollArea className="h-[550px] p-4">
-                  <div className="space-y-4">
-                    {alerts.length === 0 && (
-                      <div className="text-center py-10 text-slate-600">
-                        <p className="text-xs">Waiting for detections...</p>
-                      </div>
-                    )}
-                    {alerts.map((alert, i) => (
-                      <Alert key={alert.id} className={`${alert.score_delta < 0 ? 'bg-red-500/5 border-red-500/20' : 'bg-emerald-500/5 border-emerald-500/20'} border`}>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <AlertTitle className={`text-xs font-bold uppercase tracking-wider ${alert.score_delta < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                              {alert.activity} Detected
-                            </AlertTitle>
-                            <AlertDescription className="text-slate-300 text-sm mt-1">
-                              Person ID: <span className="text-indigo-300 underline underline-offset-4 decoration-indigo-300/30">{alert.person_id}</span>
-                            </AlertDescription>
-                          </div>
-                          <div className={`text-sm font-mono font-bold ${alert.score_delta < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                            {alert.score_delta > 0 ? '+' : ''}{alert.score_delta}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                          <span className="bg-slate-800 px-1.5 py-0.5 rounded uppercase">{alert.timestamp}</span>
-                          <span className="underline cursor-pointer hover:text-slate-300 transition-colors">View Evidence →</span>
-                        </div>
-                      </Alert>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-              <div className="p-4 bg-slate-950 border-t border-slate-800 mt-auto">
-                <button className="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded-lg text-xs font-semibold transition-all shadow-lg shadow-indigo-500/20">
-                  Export Daily Incident Report
-                </button>
-              </div>
-            </Card>
-          </div>
+      {/* Header */}
+      <header className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold tracking-widest text-zinc-100">
+          CBMS <span className="text-zinc-500">/ Civic Behaviour Monitor</span>
+        </h1>
+        <div className="flex gap-3 text-xs">
+          <StatusDot connected={videoConnected} label="Video" />
+          <StatusDot connected={alertConnected} label="Alerts" />
         </div>
+      </header>
+
+      {/* Three-column grid */}
+      <div className="grid grid-cols-12 gap-4">
+
+        {/* Left — Video feed */}
+        <section className="col-span-5 flex flex-col gap-4">
+          <Card title="Live Feed">
+            <div className="aspect-video bg-zinc-900 rounded overflow-hidden flex items-center justify-center">
+              {latestFrame ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/jpeg;base64,${latestFrame}`}
+                  alt="Live camera feed"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-zinc-600 text-sm">
+                  Waiting for video stream…
+                </span>
+              )}
+            </div>
+          </Card>
+        </section>
+
+        {/* Centre — Score trend */}
+        <section className="col-span-4 flex flex-col gap-4">
+          <Card title="Score Trend">
+            {/*
+              TODO (Day 4):
+              Replace this placeholder with a Recharts LineChart.
+              Data source: `scoreHistory` from the store.
+              Each point has { timestamp, score, name }.
+
+              Prompt template:
+              "Recharts LineChart inside a ResponsiveContainer height=300.
+               Data = scoreHistory. X axis = timestamp (short time string).
+               Y axis = score (domain [0, 200]).
+               One Line per unique `name` value, different stroke colours.
+               Custom Tooltip showing name + score + time."
+            */}
+            <div className="h-64 flex items-center justify-center bg-zinc-900 rounded">
+              <span className="text-zinc-600 text-sm">
+                Chart goes here — see TODO in page.tsx
+              </span>
+            </div>
+          </Card>
+        </section>
+
+        {/* Right — Alerts + Leaderboard */}
+        <section className="col-span-3 flex flex-col gap-4">
+          <Card title="Recent Events">
+            <AlertFeed />
+          </Card>
+          <Card title="Leaderboard">
+            <Leaderboard />
+          </Card>
+        </section>
+
       </div>
     </main>
+  );
+}
+
+// ── Tiny shared components ──────────────────────────────────
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
+      <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">
+        {title}
+      </h2>
+      {children}
+    </div>
+  );
+}
+
+function StatusDot({ connected, label }: { connected: boolean; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className={`w-2 h-2 rounded-full ${
+          connected ? "bg-emerald-400" : "bg-red-500"
+        }`}
+      />
+      {label}
+    </span>
   );
 }
