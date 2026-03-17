@@ -6,3 +6,7 @@ insightface==0.7.3
 onnxruntime==1.17.0
 numpy
 pandas
+fastapi
+uvicorn
+websockets
+python-multipart
