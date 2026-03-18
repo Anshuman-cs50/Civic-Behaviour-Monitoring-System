@@ -51,8 +51,7 @@ EVIDENCE_POST_FRAMES    = 7         # frames captured AFTER
 EVIDENCE_TOTAL          = EVIDENCE_PRE_FRAMES + EVIDENCE_POST_FRAMES  # = 10
 
 # ── Face recognition ───────────────────────────────────────
-INSIGHTFACE_MODEL_PACK  = "buffalo_l"    # downloads ~300 MB on first run
-                                          # use "buffalo_s" for faster/smaller
+INSIGHTFACE_MODEL_PACK  = "buffalo_s"    # smaller/faster than buffalo_l
 FACE_MATCH_THRESHOLD    = 0.40           # cosine similarity — raise for stricter
 FACE_MIN_DETECTION_CONF = 0.50           # ignore low-quality face crops
 FACE_ID_MIN_CONFIDENCE  = 0.45           # minimum aggregated confidence to act

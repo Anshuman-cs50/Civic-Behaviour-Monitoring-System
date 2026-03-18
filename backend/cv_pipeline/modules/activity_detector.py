@@ -59,41 +59,64 @@ class ActivityDetector:
     # ── Feature extraction ─────────────────────────────────
 
     def _load_mediapipe(self):
-        # TODO (Day 2):
-        # Import mediapipe and create:
-        #   self._face_mesh = mp.solutions.face_mesh.FaceMesh(
-        #       static_image_mode=False, max_num_faces=1,
-        #       refine_landmarks=True, min_detection_confidence=0.5)
-        #   self._pose = mp.solutions.pose.Pose(
-        #       static_image_mode=False, min_detection_confidence=0.5)
-        #
-        # Prompt template:
-        # "Initialise MediaPipe FaceMesh and Pose in Python.
-        #  FaceMesh: static_image_mode=False, max_num_faces=1,
-        #  refine_landmarks=True, min_detection_confidence=0.5.
-        #  Pose: static_image_mode=False, min_detection_confidence=0.5."
-        raise NotImplementedError("Fill in _load_mediapipe — see TODO above")
+        import mediapipe as mp
+        self._face_mesh = mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=False,
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self._pose = mp.solutions.pose.Pose(
+            static_image_mode=False,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        
 
     def _extract_features(self, crop: np.ndarray) -> dict:
-        """
-        Returns {"mouth_open": bool, "head_forward": bool}
-
-        TODO (Day 2):
-        Use self._face_mesh to get face landmarks on `crop` (RGB).
-        Compute mouth_open_ratio = vertical lip distance / face height.
-        Use self._pose to get nose Z vs shoulder Z for head_forward.
-
-        Prompt template:
-        "Given a BGR crop, run MediaPipe FaceMesh to get landmarks.
-         Compute mouth open ratio = distance(upper_lip, lower_lip) / face_height.
-         Return {'mouth_open': ratio > ACTIVITY_MOUTH_OPEN_RATIO,
-                 'head_forward': bool_from_nose_z_vs_shoulder_z}."
-        """
         if self._face_mesh is None:
             self._load_mediapipe()
 
-        # TODO: replace this stub with real MediaPipe extraction
-        return {"mouth_open": False, "head_forward": False}
+        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        h, w = crop.shape[:2]
+
+        mouth_open   = False
+        head_forward = False
+
+        # ── Mouth open ratio via FaceMesh ──────────────────
+        face_result = self._face_mesh.process(rgb)
+        if face_result.multi_face_landmarks:
+            lm = face_result.multi_face_landmarks[0].landmark
+
+            # Upper lip: landmark 13, Lower lip: landmark 14
+            # Nose tip: 1, Chin: 152  (for face height normalisation)
+            upper_lip = lm[13].y * h
+            lower_lip = lm[14].y * h
+            nose_tip  = lm[1].y  * h
+            chin      = lm[152].y * h
+
+            face_height      = abs(chin - nose_tip) + 1e-6
+            mouth_open_ratio = abs(lower_lip - upper_lip) / face_height
+            mouth_open       = mouth_open_ratio > ACTIVITY_MOUTH_OPEN_RATIO
+
+        # ── Head forward lean via Pose ──────────────────────
+        pose_result = self._pose.process(rgb)
+        if pose_result.pose_landmarks:
+            lm = pose_result.pose_landmarks.landmark
+            import mediapipe as mp
+            PL = mp.solutions.pose.PoseLandmark
+
+            nose      = lm[PL.NOSE]
+            l_shoulder = lm[PL.LEFT_SHOULDER]
+            r_shoulder = lm[PL.RIGHT_SHOULDER]
+
+            # If nose Z is significantly less than shoulder Z
+            # the person is leaning their head forward
+            shoulder_z   = (l_shoulder.z + r_shoulder.z) / 2
+            head_forward = (nose.z - shoulder_z) < -0.15
+
+        return {"mouth_open": mouth_open, "head_forward": head_forward}
 
     # ── Classification ─────────────────────────────────────
 

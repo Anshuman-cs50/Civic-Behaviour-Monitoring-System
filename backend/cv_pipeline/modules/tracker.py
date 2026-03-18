@@ -31,41 +31,50 @@ class Tracker:
 
     # ── Public API ─────────────────────────────────────────
 
-    def update(self, frame: np.ndarray, detections: list[dict]) -> list[Track]:
+    def _load_tracker(self):
         """
-        Args:
-            frame:      BGR frame (needed by ByteTrack internally)
-            detections: output of SceneMonitor — list of {"bbox", "conf"}
+        Import and instantiate ByteTrack from ultralytics.
+        Store in self._tracker.
+        """
+        from ultralytics.trackers.byte_tracker import BYTETracker
+        from types import SimpleNamespace
+        
+        # ByteTrack expects an args object
+        args = SimpleNamespace(
+            track_high_thresh=TRACKER_CONF_THRESHOLD,
+            track_low_thresh=0.1,
+            new_track_thresh=TRACKER_CONF_THRESHOLD,
+            track_buffer=TRACKER_MAX_AGE,
+            match_thresh=TRACKER_IOU_THRESHOLD,
+            mot20=False,
+        )
+        self._tracker = BYTETracker(args, frame_rate=15)
 
-        Returns:
-            list of Track objects with stable .id values
-        """
+    def update(self, frame: np.ndarray, detections: list[dict]) -> list[Track]:
+        import numpy as np
+
         if not detections:
             return []
 
         if self._tracker is None:
             self._load_tracker()
 
-        # TODO (Day 2):
-        # Convert `detections` list into the format ByteTrack expects,
-        # call self._tracker.update(), and return a list of Track objects.
-        #
-        # Prompt template:
-        # "I'm using ultralytics ByteTrack. My detections are a list of
-        #  {'bbox': [x1,y1,x2,y2], 'conf': float}. Convert them to the
-        #  format ByteTrack.update() expects, call update, then convert
-        #  results back to a list of Track(id, bbox, conf) objects."
-        raise NotImplementedError("Fill in update() — see TODO above")
+        h, w = frame.shape[:2]
 
-    # ── Helpers ────────────────────────────────────────────
+        # BYTETracker expects [x1, y1, x2, y2, conf] as float32 numpy array
+        det_array = np.array(
+            [[*d["bbox"], d["conf"]] for d in detections],
+            dtype=np.float32,
+        )
 
-    def _load_tracker(self):
-        # TODO (Day 2):
-        # Import and instantiate ByteTrack from ultralytics.
-        # Store in self._tracker.
-        #
-        # Prompt template:
-        # "Instantiate a ByteTrack tracker from ultralytics with
-        #  track_high_thresh=TRACKER_CONF_THRESHOLD,
-        #  track_buffer=TRACKER_MAX_AGE."
-        raise NotImplementedError("Fill in _load_tracker — see TODO above")
+        tracks = self._tracker.update(det_array, (h, w), (h, w))
+
+        results = []
+        for t in tracks:
+            x1, y1, x2, y2 = t.tlbr  # top-left bottom-right
+            results.append(Track(
+                track_id=int(t.track_id),
+                bbox=[float(x1), float(y1), float(x2), float(y2)],
+                conf=float(t.score),
+            ))
+        return results

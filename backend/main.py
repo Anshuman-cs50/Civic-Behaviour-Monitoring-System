@@ -89,24 +89,28 @@ app.add_middleware(
 
 @app.post("/enroll")
 async def enroll(name: str = Form(...), file: UploadFile = File(...)):
-    """
-    Enroll a new person.
-    Accepts a multipart form with `name` (str) and `file` (image).
+    # Read uploaded image → BGR numpy array
+    contents = await file.read()
+    np_arr   = np.frombuffer(contents, np.uint8)
+    frame    = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-    TODO (Day 1):
-    1. Read image bytes from `file`, decode with OpenCV
-    2. Call state.face_recognizer.extract_embedding(frame)
-    3. If None → raise HTTPException(400, "No face detected")
-    4. Call enroll_person(name, embedding) — if False, call update_embedding instead
-    5. Reload state.face_db = load_database()
-    6. Return {"status": "enrolled", "name": name}
+    if frame is None:
+        raise HTTPException(400, "Could not decode image — send a valid JPEG or PNG")
 
-    Prompt template:
-    "FastAPI endpoint. Read UploadFile bytes, decode to BGR numpy array with cv2.imdecode.
-     Call extract_embedding(). If None raise 400. Enroll or update. Reload face_db. Return JSON."
-    """
-    # TODO: replace this stub
-    raise HTTPException(501, "Enroll endpoint not yet implemented — see TODO in main.py")
+    # Extract face embedding
+    embedding = state.face_recognizer.extract_embedding(frame)
+    if embedding is None:
+        raise HTTPException(400, "No face detected in the image — try a clearer photo")
+
+    # Enroll or re-enroll
+    enrolled = enroll_person(name, embedding)
+    if not enrolled:
+        update_embedding(name, embedding)   # name exists → refresh embedding
+
+    # Reload the in-memory face DB so recognition picks it up immediately
+    state.face_db = load_database()
+
+    return {"status": "enrolled", "name": name, "db_size": len(state.face_db)}
 
 
 @app.get("/persons")
@@ -185,37 +189,69 @@ async def _broadcast_alert(alert: dict):
 # ── Main pipeline loop ─────────────────────────────────────
 
 async def _pipeline_loop():
-    """
-    Runs as a background asyncio task.
-    Reads frames from camera, runs all CV stages, broadcasts results.
+    import time
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  CAMERA_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
-    TODO (Day 2) — Wire the pipeline:
-    1. Open cv2.VideoCapture(CAMERA_INDEX)
-    2. Set width/height to CAMERA_WIDTH/CAMERA_HEIGHT
-    3. Loop: ret, frame = cap.read()
-    4. triggered, detections = state.scene_monitor.should_trigger(frame)
-    5. If triggered:
-         tracks = state.tracker.update(frame, detections)
-         For each track:
-           a. Push frame to evidence buffer
-           b. activity, conf = state.activity_detector.detect(frame, track.id, track.bbox)
-           c. If activity != "normal":
-                state.evidence_buffer.start_capture(track.id, activity)
-           d. If evidence_buffer.is_complete(track.id):
-                await _process_evidence(track.id, activity)
-    6. Draw bounding boxes + track IDs on frame
-    7. Every (1/VIDEO_FPS_CAP) seconds: await _broadcast_frame(frame)
-    8. await asyncio.sleep(0) to yield to event loop
+    if not cap.isOpened():
+        print("ERROR: Could not open camera. Check CAMERA_INDEX in config.py")
+        return
 
-    Prompt template:
-    "Async function with OpenCV camera loop. Uses state.scene_monitor,
-     state.tracker, state.activity_detector, state.evidence_buffer.
-     Annotates frame with cv2.rectangle + cv2.putText per track.
-     Throttles broadcast to VIDEO_FPS_CAP using time.time()."
-    """
-    # TODO: replace this stub
+    frame_interval = 1.0 / VIDEO_FPS_CAP
+    last_broadcast = 0.0
+
+    print("Pipeline running — camera open")
+
     while True:
-        await asyncio.sleep(1)
+        ret, frame = cap.read()
+        if not ret:
+            await asyncio.sleep(0.05)
+            continue
+
+        # ── Stage 1: Scene monitor gate ────────────────
+        triggered, detections = state.scene_monitor.should_trigger(frame)
+
+        if triggered:
+            # ── Stage 2: Track persons ─────────────────
+            tracks = state.tracker.update(frame, detections)
+
+            for track in tracks:
+                # Push frame into evidence pre-buffer for this track
+                state.evidence_buffer.push(track.id, frame, track.bbox)
+
+                # Skip if we're already mid-capture for this track
+                if state.evidence_buffer.is_capturing(track.id):
+                    if state.evidence_buffer.is_complete(track.id):
+                        await _process_evidence(track.id,
+                            state.evidence_buffer._collecting[track.id]["activity"])
+                    continue
+
+                # ── Stage 3: Detect activity ───────────
+                activity, conf = state.activity_detector.detect(
+                    frame, track.id, track.bbox
+                )
+
+                if activity != "normal":
+                    state.evidence_buffer.start_capture(track.id, activity)
+
+                # ── Annotate frame ─────────────────────
+                x1, y1, x2, y2 = [int(v) for v in track.bbox]
+                color = (0, 255, 100) if activity == "normal" else (0, 80, 255)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                label = f"ID:{track.id}  {activity} {conf:.0%}" \
+                        if activity != "normal" else f"ID:{track.id}"
+                cv2.putText(frame, label, (x1, y1 - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+
+        # ── Broadcast frame (throttled) ────────────────
+        now = time.time()
+        if now - last_broadcast >= frame_interval:
+            await _broadcast_frame(frame)
+            last_broadcast = now
+
+        # Yield control back to the event loop
+        await asyncio.sleep(0)
 
 
 async def _process_evidence(track_id: int, activity: str):

@@ -63,29 +63,29 @@ class SceneMonitor:
     # ── Person detection (YOLOv8-nano) ────────────────────
 
     def _load_model(self):
-        # TODO (Day 2):
-        # Import and load YOLOv8-nano from ultralytics.
-        # Store in self.model. This runs once (lazy load).
-        #
-        # Prompt template:
-        # "Load a YOLOv8 model from ultralytics using the path
-        #  YOLO_MODEL_PATH and set self.model to it."
-        #
-        # Expected: from ultralytics import YOLO
-        #           self.model = YOLO(YOLO_MODEL_PATH)
-        raise NotImplementedError("Fill in _load_model — see TODO above")
+        """
+        Import and load YOLOv8-nano from ultralytics.
+        Store in self.model. This runs once (lazy load).
+        """
+        from ultralytics import YOLO
+        self.model = YOLO(YOLO_MODEL_PATH)
 
     def _detect_persons(self, frame: np.ndarray) -> list[dict]:
         if self.model is None:
             self._load_model()
 
-        # TODO (Day 2):
-        # Run self.model on the frame. Filter results to only
-        # class YOLO_PERSON_CLASS_ID with confidence > YOLO_CONF_THRESHOLD.
-        # Return a list of dicts: [{"bbox": [x1,y1,x2,y2], "conf": float}]
-        #
-        # Prompt template:
-        # "Run YOLOv8 inference on `frame` (BGR numpy array).
-        #  Filter to class id YOLO_PERSON_CLASS_ID, conf > YOLO_CONF_THRESHOLD.
-        #  Return [{'bbox': [x1,y1,x2,y2], 'conf': float}]."
-        raise NotImplementedError("Fill in _detect_persons — see TODO above")
+        # Run YOLOv8 inference on frame. 
+        # class id YOLO_PERSON_CLASS_ID (0 for person), conf > YOLO_CONF_THRESHOLD.
+        results = self.model(
+            frame,
+            conf=YOLO_CONF_THRESHOLD,
+            classes=[YOLO_PERSON_CLASS_ID],
+            verbose=False,
+        )[0]
+
+        detections = []
+        for box in results.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            conf = float(box.conf[0])
+            detections.append({"bbox": [x1, y1, x2, y2], "conf": conf})
+        return detections
