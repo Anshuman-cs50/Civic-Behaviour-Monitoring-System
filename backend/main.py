@@ -23,13 +23,22 @@ import numpy as np
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import zipfile
+import io
+from pydantic import BaseModel
+
+class ReplayPlay(BaseModel):
+    speed: float = 1.0
+
+class IngestFrame(BaseModel):
+    frame_b64: str
 
 from cv_pipeline.core.config  import (
     CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, VIDEO_FPS_CAP
 )
 from cv_pipeline.core.database import (
     init_db, enroll_person, update_embedding,
-    load_database, list_persons, get_event_log, reset_all_scores
+    load_database, list_persons, get_event_log, reset_all_scores, log_event
 )
 from cv_pipeline.modules.scene_monitor    import SceneMonitor
 from cv_pipeline.modules.tracker          import Tracker
@@ -51,7 +60,12 @@ class AppState:
     face_db          : dict             = {}
     video_clients    : list[WebSocket]  = []
     alert_clients    : list[WebSocket]  = []
-    pipeline_task    : asyncio.Task     = None
+    pipeline_task    : asyncio.Task | None = None
+    replay_frames    : list             = []
+    replay_alerts    : dict             = {}
+    replay_task      : asyncio.Task | None = None
+    mode             : str              = "idle"
+
 
 state = AppState()
 
@@ -70,7 +84,7 @@ async def lifespan(app: FastAPI):
     state.pipeline_task     = asyncio.create_task(_pipeline_loop())
     yield
     # Shutdown
-    if state.pipeline_task:
+    if state.pipeline_task is not None:
         state.pipeline_task.cancel()
 
 
@@ -130,7 +144,137 @@ async def reset_scores():
     return {"status": "reset"}
 
 
-# ── WebSocket endpoints ────────────────────────────────────
+# ── Replay & Ingest Endpoints ──────────────────────────────
+
+@app.post("/replay/load")
+async def replay_load(file: UploadFile = File(...)):
+    """Accepts the cbms_results.zip from Kaggle."""
+    content = await file.read()
+    
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            # 1. Load frames.jsonl
+            with z.open("frames.jsonl") as f:
+                state.replay_frames = [json.loads(line) for line in f if line.strip()]
+            
+            # 2. Load alerts.json
+            with z.open("alerts.json") as f:
+                alerts_list = json.load(f)
+                state.replay_alerts = {a["frame_index"]: a for a in alerts_list}
+                
+        return {
+            "status": "loaded",
+            "frame_count": len(state.replay_frames),
+            "alert_count": len(state.replay_alerts)
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Failed to load replay ZIP: {e}")
+
+
+@app.post("/replay/play")
+async def replay_play(req: ReplayPlay = ReplayPlay()):
+    # Cancel any existing task
+    if state.replay_task is not None:
+        state.replay_task.cancel()
+    
+    if not state.replay_frames:
+        raise HTTPException(400, "No replay data loaded. Use /replay/load first.")
+        
+    state.replay_task = asyncio.create_task(_replay_loop(req.speed))
+    state.mode = "replay"
+    return {"status": "playing"}
+
+
+@app.post("/replay/pause")
+async def replay_pause():
+    if state.replay_task is not None:
+        state.replay_task.cancel()
+        state.replay_task = None
+    state.mode = "idle"
+    return {"status": "paused"}
+
+
+@app.post("/ingest/frame")
+async def ingest_frame(data: IngestFrame):
+    """For live streaming from Kaggle."""
+    state.mode = "live"
+    payload = json.dumps({"type": "frame", "data": data.frame_b64})
+    dead = []
+    for ws in state.video_clients:
+        try:
+            await ws.send_text(payload)
+        except:
+            dead.append(ws)
+    for ws in dead:
+        state.video_clients.remove(ws)
+    return {"status": "ok"}
+
+
+@app.post("/ingest/alert")
+async def ingest_alert(alert: dict):
+    """For live alerts from Kaggle."""
+    # Broadcast to WS
+    await _broadcast_alert(alert)
+    
+    log_event(
+        person_name=alert.get("person_name"),
+        activity=alert.get("activity"),
+        score_delta=alert.get("score_delta"),
+        id_conf=alert.get("id_confidence"),
+        evidence_path="" # Grid is b64
+    )
+    return {"status": "ok"}
+
+
+@app.get("/status")
+async def get_status():
+    return {
+        "mode": state.mode,
+        "enrolled": len(state.face_db),
+        "replay_loaded": len(state.replay_frames) > 0
+    }
+
+
+# ── Internal Looping ───────────────────────────────────────
+
+async def _replay_loop(speed: float = 1.0):
+    interval = 1.0 / (VIDEO_FPS_CAP * speed)
+    
+    try:
+        for frame_data in state.replay_frames:
+            f_idx = frame_data["frame_index"]
+            b64 = frame_data["annotated_frame_b64"]
+            
+            # Broadcast frame
+            payload = json.dumps({"type": "frame", "data": b64})
+            for ws in state.video_clients:
+                try: await ws.send_text(payload)
+                except: pass
+            
+            # Check for alerts
+            if f_idx in state.replay_alerts:
+                alert = state.replay_alerts[f_idx]
+                await _broadcast_alert(alert)
+                
+                # Write to DB
+                log_event(
+                    person_name=alert.get("person_name"),
+                    activity=alert.get("activity"),
+                    score_delta=alert.get("score_delta"),
+                    id_conf=alert.get("id_confidence"),
+                    evidence_path=""
+                )
+            
+            await asyncio.sleep(interval)
+            
+    except asyncio.CancelledError:
+        pass
+    finally:
+        state.mode = "idle"
+
+
+# ── Main pipeline loop ─────────────────────────────────────
+
 
 @app.websocket("/ws/video")
 async def ws_video(ws: WebSocket):
