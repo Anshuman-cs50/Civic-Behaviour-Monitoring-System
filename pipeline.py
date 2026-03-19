@@ -4,7 +4,8 @@
 
 # %% [markdown]
 # ## CELL 1 — Install dependencies
-# !pip install insightface onnxruntime-gpu ultralytics mediapipe opencv-python-headless httpx
+# !pip install --upgrade mediapipe insightface onnxruntime-gpu ultralytics opencv-python-headless httpx
+# import mediapipe as mp; print(f"MediaPipe version: {mp.__version__}"); print(f"MediaPipe path: {mp.__file__}")
 
 # %% [code]
 import os
@@ -88,8 +89,19 @@ def load_face_db(faces_dir):
 from ultralytics import YOLO
 from ultralytics.trackers.byte_tracker import BYTETracker
 import mediapipe as mp
-import mediapipe.solutions.face_mesh as mp_face_mesh
-import mediapipe.solutions.pose as mp_pose
+try:
+    import mediapipe.solutions.face_mesh as mp_face_mesh
+    import mediapipe.solutions.pose as mp_pose
+except (AttributeError, ImportError):
+    print("Warning: Standard mediapipe.solutions not found, trying alternate path...")
+    try:
+        from mediapipe.python.solutions import face_mesh as mp_face_mesh
+        from mediapipe.python.solutions import pose as mp_pose
+    except:
+        print("ERROR: MediaPipe solutions totally missing. Ensure 'pip install mediapipe' succeeded.")
+        # Fallbacks to None to avoid crash at import time
+        mp_face_mesh = None
+        mp_pose = None
 
 class CBMSPipeline:
     def __init__(self):
