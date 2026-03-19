@@ -88,12 +88,19 @@ def load_face_db(faces_dir):
 from ultralytics import YOLO
 from ultralytics.trackers.byte_tracker import BYTETracker
 import mediapipe as mp
+import mediapipe.solutions.face_mesh as mp_face_mesh
+import mediapipe.solutions.pose as mp_pose
 
 class CBMSPipeline:
     def __init__(self):
         print("Initializing CBMS Pipeline...")
         # Models
         self.yolo = YOLO("yolov8n.pt")
+        try:
+            self.yolo.to("cuda")
+            print("YOLO moved to GPU.")
+        except:
+            print("GPU not available for YOLO, using CPU.")
         
         # Tracker args
         tracker_args = SimpleNamespace(
@@ -109,10 +116,10 @@ class CBMSPipeline:
         self.face_app.prepare(ctx_id=0, det_size=(640, 640))
         
         # MediaPipe
-        self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(
+        self.face_mesh = mp_face_mesh.FaceMesh(
             static_image_mode=False, max_num_faces=1, refine_landmarks=True
         )
-        self.mp_pose = mp.solutions.pose.Pose(static_image_mode=False)
+        self.pose = mp_pose.Pose(static_image_mode=False)
         
         # State
         self.history = defaultdict(lambda: deque(maxlen=ACTIVITY_HEAD_FORWARD_FRAMES))
@@ -127,7 +134,7 @@ class CBMSPipeline:
         head_forward = False
         
         # Face Mesh
-        fm_res = self.mp_face_mesh.process(rgb)
+        fm_res = self.face_mesh.process(rgb)
         if fm_res.multi_face_landmarks:
             lm = fm_res.multi_face_landmarks[0].landmark
             # 13: upper, 14: lower, 1: nose tip, 152: chin
@@ -137,12 +144,12 @@ class CBMSPipeline:
             mouth_open = (abs(lower_y - upper_y) / face_height) > ACTIVITY_MOUTH_OPEN_RATIO
             
         # Pose
-        pose_res = self.mp_pose.process(rgb)
+        pose_res = self.pose.process(rgb)
         if pose_res.pose_landmarks:
             lm = pose_res.pose_landmarks.landmark
-            nose_z = lm[mp.solutions.pose.PoseLandmark.NOSE].z
-            l_sh_z = lm[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER].z
-            r_sh_z = lm[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER].z
+            nose_z = lm[mp_pose.PoseLandmark.NOSE].z
+            l_sh_z = lm[mp_pose.PoseLandmark.LEFT_SHOULDER].z
+            r_sh_z = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER].z
             sh_z = (l_sh_z + r_sh_z) / 2
             head_forward = (nose_z - sh_z) < -0.15
             
