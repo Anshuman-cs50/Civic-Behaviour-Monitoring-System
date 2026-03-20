@@ -18,8 +18,7 @@ import { Leaderboard } from "@/components/ui/Leaderboard";
 import { useState, useEffect, useRef } from "react";
 
 
-// TODO (Day 4): import Recharts components
-// import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 export default function Dashboard() {
   const {
@@ -39,8 +38,9 @@ export default function Dashboard() {
     setAlertConnected:  s.setAlertConnected,
   }));
 
-  const [status, setStatus] = useState({ mode: "idle", enrolled: 0, replay_loaded: false });
+  const [status, setStatus] = useState({ mode: "idle", enrolled: 0, replay_loaded: false, frame_count: 0, alert_count: 0 });
   const [speed, setSpeed] = useState(1.0);
+  const { setPersons } = useCBMSStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Status Polling ────────────────────────────────────
@@ -55,6 +55,24 @@ export default function Dashboard() {
     const iv = setInterval(poll, 3000);
     return () => clearInterval(iv);
   }, []);
+
+  // ── Leaderboard Polling ────────────────────────────────
+  useEffect(() => {
+    const fetchPersons = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/persons");
+        if (res.ok) {
+          const data = await res.json();
+          setPersons(data);
+        }
+      } catch (e) {
+        console.error("Leaderboard poll failed", e);
+      }
+    };
+    fetchPersons();
+    const iv = setInterval(fetchPersons, 5000);
+    return () => clearInterval(iv);
+  }, [setPersons]);
 
   // ── Actions ───────────────────────────────────────────
   const handleLoadZip = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,6 +162,11 @@ export default function Dashboard() {
             <span className="text-zinc-500 uppercase text-[10px] tracking-tighter">Enrolled</span>
             <span className="font-bold text-zinc-200">{status.enrolled}</span>
           </div>
+          
+          <div className="flex items-center gap-2 border-l border-zinc-800 pl-6">
+            <span className="text-zinc-500 uppercase text-[10px] tracking-tighter">Frames</span>
+            <span className="font-bold text-zinc-200">{status.frame_count}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -219,23 +242,36 @@ export default function Dashboard() {
         {/* Centre — Score trend */}
         <section className="col-span-4 flex flex-col gap-4">
           <Card title="Score Trend">
-            {/*
-              TODO (Day 4):
-              Replace this placeholder with a Recharts LineChart.
-              Data source: `scoreHistory` from the store.
-              Each point has { timestamp, score, name }.
-
-              Prompt template:
-              "Recharts LineChart inside a ResponsiveContainer height=300.
-               Data = scoreHistory. X axis = timestamp (short time string).
-               Y axis = score (domain [0, 200]).
-               One Line per unique `name` value, different stroke colours.
-               Custom Tooltip showing name + score + time."
-            */}
-            <div className="h-64 flex items-center justify-center bg-zinc-900 rounded">
-              <span className="text-zinc-600 text-sm">
-                Chart goes here — see TODO in page.tsx
-              </span>
+            <div className="h-[280px] w-full bg-zinc-900 rounded pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={scoreHistory}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis 
+                    dataKey="timestamp" 
+                    stroke="#71717a" 
+                    fontSize={10} 
+                    tickFormatter={(name) => name.split("T")?.[1]?.split(".")?.[0] || name} 
+                  />
+                  <YAxis domain={[0, 200]} stroke="#71717a" fontSize={10} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: "#09090b", border: "1px solid #27272a", fontSize: "10px" }}
+                    itemStyle={{ fontSize: "10px" }}
+                  />
+                  {/* Generate lines dynamically based on unique names in history */}
+                  {Array.from(new Set(scoreHistory.map(h => h.name))).map((name, index) => (
+                    <Line
+                      key={name}
+                      type="monotone"
+                      dataKey="score"
+                      data={scoreHistory.filter(h => h.name === name)}
+                      name={name}
+                      stroke={["#10b981", "#3b82f6", "#f59e0b", "#ef4444"][index % 4]}
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </Card>
         </section>

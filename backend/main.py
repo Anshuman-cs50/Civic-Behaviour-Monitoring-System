@@ -26,12 +26,22 @@ from fastapi.middleware.cors import CORSMiddleware
 import zipfile
 import io
 from pydantic import BaseModel
+from typing import Optional
 
-class ReplayPlay(BaseModel):
+class PlayRequest(BaseModel):
     speed: float = 1.0
 
-class IngestFrame(BaseModel):
+class IngestFrameRequest(BaseModel):
     frame_b64: str
+
+class IngestAlertRequest(BaseModel):
+    person_name: str
+    activity: str
+    score_delta: int
+    new_score: int
+    id_confidence: float
+    evidence_grid_b64: Optional[str] = None
+    frame_index: Optional[int] = None
 
 from cv_pipeline.core.config  import (
     CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, VIDEO_FPS_CAP
@@ -172,7 +182,7 @@ async def replay_load(file: UploadFile = File(...)):
 
 
 @app.post("/replay/play")
-async def replay_play(req: ReplayPlay = ReplayPlay()):
+async def replay_play(req: PlayRequest = PlayRequest()):
     # Cancel any existing task
     if state.replay_task is not None:
         state.replay_task.cancel()
@@ -195,33 +205,26 @@ async def replay_pause():
 
 
 @app.post("/ingest/frame")
-async def ingest_frame(data: IngestFrame):
+async def ingest_frame(data: IngestFrameRequest):
     """For live streaming from Kaggle."""
     state.mode = "live"
-    payload = json.dumps({"type": "frame", "data": data.frame_b64})
-    dead = []
-    for ws in state.video_clients:
-        try:
-            await ws.send_text(payload)
-        except:
-            dead.append(ws)
-    for ws in dead:
-        state.video_clients.remove(ws)
+    await _broadcast_raw_frame(data.frame_b64)
     return {"status": "ok"}
 
 
 @app.post("/ingest/alert")
-async def ingest_alert(alert: dict):
+async def ingest_alert(body: IngestAlertRequest):
     """For live alerts from Kaggle."""
+    alert_dict = body.dict()
     # Broadcast to WS
-    await _broadcast_alert(alert)
+    await _broadcast_alert(alert_dict)
     
     log_event(
-        person_name=alert.get("person_name"),
-        activity=alert.get("activity"),
-        score_delta=alert.get("score_delta"),
-        id_conf=alert.get("id_confidence"),
-        evidence_path="" # Grid is b64
+        person_name=body.person_name,
+        activity=body.activity,
+        score_delta=body.score_delta,
+        id_conf=body.id_confidence,
+        evidence_path=body.evidence_grid_b64 # Use b64 as path/marker
     )
     return {"status": "ok"}
 
@@ -231,7 +234,9 @@ async def get_status():
     return {
         "mode": state.mode,
         "enrolled": len(state.face_db),
-        "replay_loaded": len(state.replay_frames) > 0
+        "replay_loaded": len(state.replay_frames) > 0,
+        "frame_count": len(state.replay_frames),
+        "alert_count": len(state.replay_alerts)
     }
 
 
@@ -246,10 +251,7 @@ async def _replay_loop(speed: float = 1.0):
             b64 = frame_data["annotated_frame_b64"]
             
             # Broadcast frame
-            payload = json.dumps({"type": "frame", "data": b64})
-            for ws in state.video_clients:
-                try: await ws.send_text(payload)
-                except: pass
+            await _broadcast_raw_frame(b64)
             
             # Check for alerts
             if f_idx in state.replay_alerts:
@@ -262,7 +264,7 @@ async def _replay_loop(speed: float = 1.0):
                     activity=alert.get("activity"),
                     score_delta=alert.get("score_delta"),
                     id_conf=alert.get("id_confidence"),
-                    evidence_path=""
+                    evidence_path=alert.get("evidence_grid_b64")
                 )
             
             await asyncio.sleep(interval)
@@ -299,6 +301,20 @@ async def ws_alerts(ws: WebSocket):
 
 
 # ── Broadcast helpers ──────────────────────────────────────
+
+async def _broadcast_raw_frame(b64: str):
+    if not state.video_clients:
+        return
+    payload = json.dumps({"type": "frame", "data": b64})
+    dead = []
+    for ws in state.video_clients:
+        try:
+            await ws.send_text(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        state.video_clients.remove(ws)
+
 
 async def _broadcast_frame(frame: np.ndarray):
     if not state.video_clients:
