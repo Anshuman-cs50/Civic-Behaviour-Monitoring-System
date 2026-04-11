@@ -4,14 +4,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CBMS — Civic Behaviour Monitor",
-  description: "Real-time civic behaviour monitoring dashboard",
+  description: "Real-time civic behaviour monitoring and scoring dashboard",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
       <body className="bg-zinc-950 antialiased">{children}</body>

@@ -13,8 +13,16 @@ FACES_DIR       = DATA_DIR / "faces"                    # reference face images
 LOGS_DIR        = DATA_DIR / "logs"                     # evidence frame grids
 DB_PATH         = DATA_DIR / "cbms_logs.db"
 
+# ── Stream directories (shared with stream_manager) ─────────
+STREAM_DIR           = BASE_DIR.parent.parent / "Stream"   # project root / Stream
+UNPROCESSED_DIR      = STREAM_DIR / "unprocessed_clips"    # raw camera chunks
+PROCESSED_DIR        = STREAM_DIR / "processed_clips"      # annotated clips from Kaggle
+KEEP_UNPROCESSED     = False     # delete raw chunks after successful upload
+KEEP_PROCESSED       = True      # keep annotated clips for evidence review
+PROCESSED_MAX_FILES  = 200       # rotate oldest processed clips beyond this count
+
 # Create dirs on import
-for _d in [FACES_DIR, LOGS_DIR]:
+for _d in [FACES_DIR, LOGS_DIR, UNPROCESSED_DIR, PROCESSED_DIR]:
     _d.mkdir(parents=True, exist_ok=True)
 
 # ── Camera ─────────────────────────────────────────────────
