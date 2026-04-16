@@ -27,8 +27,16 @@ def init_db() -> None:
                 enrolled_at  TEXT    NOT NULL,
                 score        INTEGER NOT NULL DEFAULT 100
             );
-        """)
-        c.execute("""
+
+            CREATE TABLE IF NOT EXISTS person_embeddings (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_name  TEXT    NOT NULL,
+                embedding    BLOB    NOT NULL,
+                label        TEXT    DEFAULT '',
+                enrolled_at  TEXT    NOT NULL,
+                FOREIGN KEY (person_name) REFERENCES persons(name) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS events (
                id INTEGER PRIMARY KEY AUTOINCREMENT,
                person_name TEXT NOT NULL,
@@ -40,62 +48,156 @@ def init_db() -> None:
                evidence_path TEXT,
                camera_id TEXT DEFAULT 'Camera 0',
                pipeline_type TEXT DEFAULT 'activity'
-            )
-        """)
-        c.execute("""
+            );
+
             CREATE TABLE IF NOT EXISTS cameras (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 lat REAL NOT NULL DEFAULT 30.336542,
                 lng REAL NOT NULL DEFAULT 77.869149,
                 last_seen TEXT
-            )
+            );
         """)
-        # Migrations
-        try: c.execute("ALTER TABLE events ADD COLUMN activity_conf REAL DEFAULT 0.0")
-        except: pass
-        try: c.execute("ALTER TABLE events ADD COLUMN camera_id TEXT DEFAULT 'Camera 0'")
-        except: pass
-        try: c.execute("ALTER TABLE events ADD COLUMN pipeline_type TEXT DEFAULT 'activity'")
-        except: pass
+        # ── Column migrations ──────────────────────────────────────
+        for col_sql in [
+            "ALTER TABLE events ADD COLUMN activity_conf REAL DEFAULT 0.0",
+            "ALTER TABLE events ADD COLUMN camera_id TEXT DEFAULT 'Camera 0'",
+            "ALTER TABLE events ADD COLUMN pipeline_type TEXT DEFAULT 'activity'",
+        ]:
+            try: c.execute(col_sql)
+            except: pass
+
+        # ── Migrate legacy single-embedding rows into person_embeddings ─
+        # If a person exists in 'persons' but has no rows in person_embeddings,
+        # copy the legacy embedding blob across so old enrollments still work.
+        legacy = c.execute(
+            """SELECT p.name, p.embedding, p.enrolled_at
+               FROM persons p
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM person_embeddings pe WHERE pe.person_name = p.name
+               )"""
+        ).fetchall()
+        for row in legacy:
+            c.execute(
+                """INSERT INTO person_embeddings (person_name, embedding, label, enrolled_at)
+                   VALUES (?, ?, 'front', ?)""",
+                (row["name"], row["embedding"], row["enrolled_at"])
+            )
+        if legacy:
+            print(f"[DB] Migrated {len(legacy)} legacy single-embedding person(s) to gallery table.")
 
 
 # ── Enrollment ─────────────────────────────────────────────
 
-def enroll_person(name: str, embedding: np.ndarray) -> bool:
-    """Returns False if name already exists."""
+def enroll_person(name: str, embedding: np.ndarray, label: str = "photo_1") -> bool:
+    """
+    Enroll a new person with their first embedding.
+    - Creates a 'persons' record (with a copy of the embedding for legacy compat).
+    - Also inserts into person_embeddings for gallery matching.
+    Returns True if created, False if the name already existed.
+    In both cases, call add_person_embedding() if you want to add MORE photos.
+    """
+    now = datetime.now().isoformat()
+    blob = embedding.astype(np.float32).tobytes()
+    created = False
     try:
         with _conn() as c:
             c.execute(
                 "INSERT INTO persons (name, embedding, enrolled_at) VALUES (?,?,?)",
-                (name.strip(), embedding.astype(np.float32).tobytes(),
-                 datetime.now().isoformat())
+                (name.strip(), blob, now)
             )
-        return True
+            created = True
     except sqlite3.IntegrityError:
-        return False
+        pass   # person already exists — that's fine, we still add the photo below
+
+    # Always add this embedding to the gallery
+    add_person_embedding(name.strip(), embedding, label)
+    return created
+
+
+def add_person_embedding(name: str, embedding: np.ndarray, label: str = "") -> int:
+    """
+    Add one more photo-embedding to an existing person's gallery.
+    Returns the new row id.
+    Auto-labels as 'photo_N' if label is empty.
+    """
+    with _conn() as c:
+        # Auto-label
+        if not label:
+            count = c.execute(
+                "SELECT COUNT(*) FROM person_embeddings WHERE person_name=?", (name,)
+            ).fetchone()[0]
+            label = f"photo_{count + 1}"
+
+        cur = c.execute(
+            """INSERT INTO person_embeddings (person_name, embedding, label, enrolled_at)
+               VALUES (?, ?, ?, ?)""",
+            (name, embedding.astype(np.float32).tobytes(), label, datetime.now().isoformat())
+        )
+        # Also keep the persons.embedding column in sync (set to this latest embedding)
+        c.execute(
+            """UPDATE persons SET embedding=?, enrolled_at=? WHERE name=?""",
+            (embedding.astype(np.float32).tobytes(), datetime.now().isoformat(), name)
+        )
+        return cur.lastrowid
 
 
 def update_embedding(name: str, embedding: np.ndarray) -> None:
+    """Legacy compat: replaces the primary embedding and adds it to the gallery."""
+    add_person_embedding(name, embedding, label="updated")
+
+
+def delete_person_photo(name: str, photo_id: int) -> bool:
+    """Remove one specific embedding from a person's gallery by its row id."""
     with _conn() as c:
-        c.execute(
-            "UPDATE persons SET embedding=?, enrolled_at=? WHERE name=?",
-            (embedding.astype(np.float32).tobytes(),
-             datetime.now().isoformat(), name)
+        cur = c.execute(
+            "DELETE FROM person_embeddings WHERE id=? AND person_name=?",
+            (photo_id, name)
         )
+        return cur.rowcount > 0
 
 
 def delete_person(name: str) -> None:
     with _conn() as c:
+        c.execute("DELETE FROM person_embeddings WHERE person_name=?", (name,))
         c.execute("DELETE FROM persons WHERE name=?", (name,))
 
 
-def load_database() -> dict[str, np.ndarray]:
-    """Returns {name: embedding} ready for FaceRecognizer."""
+def list_person_photos(name: str) -> list[dict]:
+    """Return all photo-embeddings for a person (id, label, enrolled_at)."""
     with _conn() as c:
-        rows = c.execute("SELECT name, embedding FROM persons").fetchall()
-    return {r["name"]: np.frombuffer(r["embedding"], dtype=np.float32)
-            for r in rows}
+        rows = c.execute(
+            """SELECT id, label, enrolled_at FROM person_embeddings
+               WHERE person_name=? ORDER BY id""",
+            (name,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def load_database() -> dict[str, list[np.ndarray]]:
+    """
+    Returns {name: [emb1, emb2, ...]} — a gallery of embeddings per person.
+    FaceRecognizer._match() takes the MAX cosine similarity across all embeddings
+    for each person, which is the standard nearest-neighbour gallery strategy.
+    """
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT person_name, embedding FROM person_embeddings ORDER BY person_name, id"""
+        ).fetchall()
+
+    db: dict[str, list[np.ndarray]] = {}
+    for r in rows:
+        emb = np.frombuffer(r["embedding"], dtype=np.float32).copy()
+        db.setdefault(r["person_name"], []).append(emb)
+
+    # Fallback: if person_embeddings is empty, load from legacy persons.embedding
+    if not db:
+        with _conn() as c:
+            legacy = c.execute("SELECT name, embedding FROM persons").fetchall()
+        for r in legacy:
+            emb = np.frombuffer(r["embedding"], dtype=np.float32).copy()
+            db[r["name"]] = [emb]
+    return db
 
 
 def list_persons() -> list[dict]:

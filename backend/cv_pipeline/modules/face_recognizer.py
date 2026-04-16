@@ -79,14 +79,15 @@ class FaceRecognizer:
     # ── Multi-frame aggregation (Stage 4 core) ─────────────
 
     def identify_from_crops(self, crops: list[np.ndarray],
-                            database: dict[str, np.ndarray]
+                            database: dict[str, list[np.ndarray]]
                             ) -> tuple[str | None, float]:
         """
         Identify a person from an evidence bundle (up to 10 crops).
 
-        Weighted aggregation: accumulates cosine similarity scores across
-        all frames where a face is clearly detected. Returns the identity
-        with the highest accumulated score.
+        For each crop we extract an embedding, then compare it against
+        ALL stored embeddings for EACH person (gallery matching).
+        We accumulate the max-per-person similarity across frames and
+        return the person with the best total score.
 
         Returns (name, avg_confidence) or (None, 0.0).
         """
@@ -110,7 +111,7 @@ class FaceRecognizer:
             return None, 0.0
 
         best_name = max(scores_acc, key=scores_acc.__getitem__)
-        avg_conf  = scores_acc[best_name] / len(crops)   # normalise over total frames
+        avg_conf  = scores_acc[best_name] / len(crops)
 
         if avg_conf >= FACE_MATCH_THRESHOLD:
             return best_name, round(avg_conf, 3)
@@ -119,19 +120,27 @@ class FaceRecognizer:
     # ── Cosine matching ────────────────────────────────────
 
     def _match(self, embedding: np.ndarray,
-               database: dict[str, np.ndarray]
+               database: dict[str, list[np.ndarray]]
                ) -> tuple[str | None, float]:
+        """
+        Nearest-neighbour gallery match.
+        For each person, compute cosine similarity against ALL their stored
+        embeddings and take the MAXIMUM — not the average.
+        This correctly handles multi-angle registration.
+        """
         if not database:
             return None, 0.0
 
         best_name, best_score = None, -1.0
         emb = embedding / (np.linalg.norm(embedding) + 1e-8)
 
-        for name, ref in database.items():
-            ref_n = ref / (np.linalg.norm(ref) + 1e-8)
-            score = float(np.dot(emb, ref_n))
-            if score > best_score:
-                best_score, best_name = score, name
+        for name, refs in database.items():
+            # refs is now a list; iterate and keep the max similarity
+            for ref in refs:
+                ref_n = ref / (np.linalg.norm(ref) + 1e-8)
+                score = float(np.dot(emb, ref_n))
+                if score > best_score:
+                    best_score, best_name = score, name
 
         if best_score >= FACE_MATCH_THRESHOLD:
             return best_name, best_score

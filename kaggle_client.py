@@ -14,7 +14,7 @@ API_ENDPOINT = f"{NGROK_URL}/process_chunk"
 # ── Config — Smoking pipeline (port 8001) ──────────────────────────────────────
 # Set this to the URL shown by Cell 8 of cbms_smoking_pipeline.ipynb.
 # Leave as "" to disable the smoking pipeline client-side.
-SMOKING_NGROK_URL    = "https://unison-likely-catalog.ngrok-free.dev"
+SMOKING_NGROK_URL    = "YOUR_SMOKING_NGROK_URL_HERE"
 SMOKING_API_ENDPOINT = f"{SMOKING_NGROK_URL}/process_chunk" if SMOKING_NGROK_URL else ""
 
 # ── Config — Helmet pipeline (port 8001 in helmet notebook) ───────────────────
@@ -25,7 +25,7 @@ HELMET_NGROK_URL    = ""   # e.g. "https://xxxx-xxxx.ngrok-free.app"
 HELMET_API_ENDPOINT = f"{HELMET_NGROK_URL}/process_chunk" if HELMET_NGROK_URL else ""
 
 # 0 for webcam, or path to a local video file
-VIDEO_SOURCE = 0
+VIDEO_SOURCE = "Stream/unprocessed_clips/cctv_smoking_clip.mp4"
 
 CHUNK_DURATION_SEC = 10
 FPS                = 15

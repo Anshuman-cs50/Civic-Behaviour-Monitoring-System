@@ -53,6 +53,7 @@ from cv_pipeline.core.database import (
     get_event_log, init_db, list_persons, load_database,
     log_event, reset_all_scores,
     enroll_person, update_embedding,
+    add_person_embedding, delete_person, delete_person_photo, list_person_photos,
     get_top_hotspots,
     get_overview_stats, get_hourly_trends, get_critical_alerts,
     get_activity_breakdown, get_pipeline_distribution, get_person_profile,
@@ -305,34 +306,100 @@ async def stream_clips(_: dict = Depends(_get_session)):
 # PERSON / ENROLLMENT ENDPOINTS
 # ══════════════════════════════════════════════════════════
 
+def _extract_face_or_400(frame: np.ndarray) -> np.ndarray:
+    """Helper: extract embedding or raise 400."""
+    if frame is None:
+        raise HTTPException(400, "Could not decode image — send a valid JPEG or PNG")
+    embedding = state.face_recognizer.extract_embedding(frame)
+    if embedding is None:
+        raise HTTPException(400, "No face detected in the image — try a clearer photo with good lighting")
+    return embedding
+
+
 @app.post("/enroll")
 async def enroll(
     name: str = Form(...),
     file: UploadFile = File(...),
+    label: str = Form(default=""),          # optional: 'front', 'left', 'right', etc.
     _: dict = Depends(_get_admin),
 ):
+    """
+    Enroll a new person OR add a first photo.
+    For additional photos of the same person, use POST /persons/{name}/add-photo.
+    """
     contents = await file.read()
-    np_arr   = np.frombuffer(contents, np.uint8)
-    frame    = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    frame     = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
+    embedding = _extract_face_or_400(frame)
 
-    if frame is None:
-        raise HTTPException(400, "Could not decode image — send a valid JPEG or PNG")
-
-    embedding = state.face_recognizer.extract_embedding(frame)
-    if embedding is None:
-        raise HTTPException(400, "No face detected in the image — try a clearer photo")
-
-    enrolled = enroll_person(name, embedding)
-    if not enrolled:
-        update_embedding(name, embedding)
-
+    created = enroll_person(name, embedding, label or "photo_1")
     state.face_db = load_database()
-    return {"status": "enrolled", "name": name, "db_size": len(state.face_db)}
+    photo_count = len(state.face_db.get(name, []))
+    return {
+        "status":      "enrolled" if created else "photo_added",
+        "name":        name,
+        "photo_count": photo_count,
+        "db_size":     len(state.face_db),
+    }
+
+
+@app.post("/persons/{name}/add-photo")
+async def add_photo(
+    name: str,
+    file: UploadFile = File(...),
+    label: str = Form(default=""),          # optional angle label
+    _: dict = Depends(_get_admin),
+):
+    """Add an additional photo to an already-enrolled person's gallery."""
+    # Ensure person exists
+    existing = list_person_photos(name)
+    if not existing:
+        raise HTTPException(404, f"Person '{name}' not enrolled yet. Use POST /enroll first.")
+
+    contents = await file.read()
+    frame     = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
+    embedding = _extract_face_or_400(frame)
+
+    photo_id = add_person_embedding(name, embedding, label)
+    state.face_db = load_database()
+    return {
+        "status":      "photo_added",
+        "name":        name,
+        "photo_id":    photo_id,
+        "photo_count": len(state.face_db.get(name, [])),
+    }
+
+
+@app.get("/persons/{name}/photos")
+async def get_photos(name: str, _: dict = Depends(_get_session)):
+    """List all enrolled photos for a person (id, label, enrolled_at)."""
+    photos = list_person_photos(name)
+    if not photos:
+        raise HTTPException(404, f"Person '{name}' not found or has no photos.")
+    return {"name": name, "photos": photos}
+
+
+@app.delete("/persons/{name}/photos/{photo_id}")
+async def remove_photo(
+    name: str, photo_id: int, _: dict = Depends(_get_admin)
+):
+    """Delete a specific photo from a person's gallery by photo_id."""
+    deleted = delete_person_photo(name, photo_id)
+    if not deleted:
+        raise HTTPException(404, "Photo not found or doesn't belong to this person")
+    state.face_db = load_database()
+    remaining = len(state.face_db.get(name, []))
+    return {"status": "deleted", "name": name, "remaining_photos": remaining}
 
 
 @app.get("/persons")
 async def persons(_: dict = Depends(_get_session)):
-    return list_persons()
+    rows = list_persons()
+    # Annotate each person with their photo count
+    db = state.face_db
+    for row in rows:
+        row["photo_count"] = len(db.get(row["name"], []))
+    return rows
+
 
 
 @app.get("/events")
