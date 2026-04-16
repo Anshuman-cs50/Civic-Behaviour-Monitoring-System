@@ -342,8 +342,7 @@ def update_camera(cam_id: str, name: str, lat: float, lng: float) -> None:
         )
 
 def get_heatmap_data() -> list[dict]:
-    """Returns camera coordinates and weighted intensity based on incident counts.
-       Higher severity incidents can add more weight if required, but for now it's incident count."""
+    """Returns camera coordinates and incident-weighted intensity for the map."""
     with _conn() as c:
         rows = c.execute(
             """SELECT c.id, c.name, c.lat, c.lng, COUNT(e.id) as incidents
@@ -351,5 +350,58 @@ def get_heatmap_data() -> list[dict]:
                LEFT JOIN events e ON c.id = e.camera_id
                GROUP BY c.id"""
         ).fetchall()
-        
     return [dict(r) for r in rows]
+
+def get_smoking_stats() -> dict:
+    """Aggregated metrics for the Smoking Detection dashboard."""
+    with _conn() as c:
+        total = c.execute(
+            "SELECT COUNT(*) as n FROM events WHERE pipeline_type = 'smoking'"
+        ).fetchone()["n"]
+
+        identified = c.execute(
+            """SELECT COUNT(*) as n FROM events
+               WHERE pipeline_type = 'smoking' AND person_name NOT LIKE 'UNKNOWN%'"""
+        ).fetchone()["n"]
+
+        cutoff_10m = (datetime.now() - timedelta(minutes=10)).isoformat()
+        recent = c.execute(
+            "SELECT COUNT(*) as n FROM events WHERE pipeline_type='smoking' AND timestamp > ?",
+            (cutoff_10m,)
+        ).fetchone()["n"]
+
+        unique_people = c.execute(
+            """SELECT COUNT(DISTINCT person_name) as n FROM events
+               WHERE pipeline_type = 'smoking' AND person_name NOT LIKE 'UNKNOWN%'"""
+        ).fetchone()["n"]
+
+        events_feed = c.execute(
+            """SELECT person_name, camera_id, timestamp, activity_conf, score_delta
+               FROM events WHERE pipeline_type='smoking'
+               ORDER BY id DESC LIMIT 20"""
+        ).fetchall()
+
+        per_camera = c.execute(
+            """SELECT camera_id, COUNT(*) as count
+               FROM events WHERE pipeline_type='smoking'
+               GROUP BY camera_id ORDER BY count DESC LIMIT 8"""
+        ).fetchall()
+
+        cutoff_12h = (datetime.now() - timedelta(hours=12)).isoformat()
+        hourly = c.execute(
+            """SELECT strftime('%H:00', timestamp) as hour, COUNT(*) as count
+               FROM events WHERE pipeline_type='smoking' AND timestamp > ?
+               GROUP BY hour ORDER BY hour""",
+            (cutoff_12h,)
+        ).fetchall()
+
+    return {
+        "total_detections":   total,
+        "identified_persons": identified,
+        "recent_10min":       recent,
+        "unique_offenders":   unique_people,
+        "detection_rate":     round((identified / total * 100) if total > 0 else 0, 1),
+        "events":             [dict(r) for r in events_feed],
+        "per_camera":         [dict(r) for r in per_camera],
+        "hourly":             [dict(r) for r in hourly],
+    }

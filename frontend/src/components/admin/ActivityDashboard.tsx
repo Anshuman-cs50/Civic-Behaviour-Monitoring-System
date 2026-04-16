@@ -14,7 +14,7 @@ export function ActivityDashboard() {
 
   const [ngrokUrl, setNgrokUrl] = useState("");
   const [source, setSource] = useState("0");
-  const [clips, setClips] = useState<string[]>([]);
+  const [clips, setClips] = useState<{ value: string; label: string; group: string }[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamInfo, setStreamInfo] = useState<Record<string, any>>({});
 
@@ -51,7 +51,10 @@ export function ActivityDashboard() {
     };
     poll();
     const iv = setInterval(poll, 10000);
-    streamApi.clips().then((r) => setClips(r.clips)).catch(() => {});
+    streamApi.clips().then((r) => {
+      const detailed = (r as any).clips_detailed ?? r.clips.map((v: string) => ({ value: v, label: v, group: "Test Clips" }));
+      setClips(detailed);
+    }).catch(() => {});
     return () => clearInterval(iv);
   }, []);
 
@@ -97,10 +100,18 @@ export function ActivityDashboard() {
               </div>
               <div className="flex-1">
                 <label className="text-[10px] text-zinc-500 uppercase mb-1 block">Source</label>
-                <select value={source} onChange={e=>setSource(e.target.value)} className="w-full bg-zinc-900 border border-white/10 rounded-md px-3 py-1.5 text-xs text-zinc-200">
-                  <option value="0">Camera 0</option>
-                  {clips.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+              <select value={source} onChange={e=>setSource(e.target.value)} className="w-full bg-zinc-900 border border-white/10 rounded-md px-3 py-1.5 text-xs text-zinc-200">
+                <option value="0">📷 Camera 0 (Live)</option>
+                {["Test Clips", "Processed"].map(group => {
+                  const groupClips = clips.filter(c => c.group === group);
+                  if (groupClips.length === 0) return null;
+                  return (
+                    <optgroup key={group} label={group}>
+                      {groupClips.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </optgroup>
+                  );
+                })}
+              </select>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleStart} disabled={streaming} className="bg-emerald-600 disabled:opacity-50 text-white rounded-md px-4 py-1.5 text-xs font-semibold hover:bg-emerald-500 transition-colors">Start</button>

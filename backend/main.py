@@ -47,7 +47,8 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 # ── Backend modules ────────────────────────────────────────
-from cv_pipeline.core.config import PROCESSED_DIR, VIDEO_FPS_CAP
+from cv_pipeline.core.config import VIDEO_FPS_CAP
+from cv_pipeline.core.config import PROCESSED_DIR   # Path object: Stream/processed_clips/
 from cv_pipeline.core.database import (
     get_event_log, init_db, list_persons, load_database,
     log_event, reset_all_scores,
@@ -55,7 +56,7 @@ from cv_pipeline.core.database import (
     get_top_hotspots,
     get_overview_stats, get_hourly_trends, get_critical_alerts,
     get_activity_breakdown, get_pipeline_distribution, get_person_profile,
-    get_all_cameras, update_camera, get_heatmap_data,
+    get_all_cameras, update_camera, get_heatmap_data, get_smoking_stats,
 )
 from cv_pipeline.modules.face_recognizer import FaceRecognizer
 from cv_pipeline.modules.rule_engine import RuleEngine
@@ -117,8 +118,13 @@ class IngestAlertRequest(BaseModel):
     score_delta:       int  = 0
     new_score:         int  = 0
     id_confidence:     float = 0.0
+    activity_conf:     float = 0.0
     evidence_grid_b64: Optional[str] = None
     frame_index:       Optional[int] = None
+    # Routing fields (sent by the refactored kaggle_client.py)
+    pipeline_type:     str = "activity"     # "activity" | "smoking" | "roadSafety"
+    camera_id:         str = "Camera 0"
+    location_label:    str = ""
 
 
 # ── App state ──────────────────────────────────────────────
@@ -172,6 +178,7 @@ app.add_middleware(
 # Serve evidence frames/clips
 from cv_pipeline.core.config import LOGS_DIR
 app.mount("/evidence", StaticFiles(directory=str(LOGS_DIR)), name="evidence")
+app.mount("/processed-clips", StaticFiles(directory=str(PROCESSED_DIR)), name="processed_clips")
 
 
 # ══════════════════════════════════════════════════════════
@@ -224,6 +231,13 @@ async def stream_start(
     source: int | str
     if body.source == "0":
         source = 0
+    elif body.source.startswith("processed:"):
+        # Annotated clip from Stream/processed_clips/<filename>
+        clip_name = body.source[len("processed:"):]
+        clip_path = PROCESSED_DIR / clip_name
+        if not clip_path.exists():
+            raise HTTPException(404, f"Processed clip not found: {clip_name}")
+        source = str(clip_path)
     else:
         clip_path = Path(PROCESSED_DIR).parent / "Test Clips" / body.source
         if not clip_path.exists():
@@ -268,11 +282,22 @@ async def stream_status(_: dict = Depends(_get_session)):
 
 @app.get("/stream/clips")
 async def stream_clips(_: dict = Depends(_get_session)):
-    """List .mp4 files available as test clips (from Stream/Test Clips/)."""
-    clips_dir = Path(PROCESSED_DIR).parent / "Test Clips"
-    clips_dir.mkdir(parents=True, exist_ok=True)
-    clips = sorted(p.name for p in clips_dir.glob("*.mp4"))
-    return {"clips": clips}
+    """List .mp4 files from both Test Clips and processed_clips.
+    Processed clips use the prefix 'processed:' to distinguish them.
+    """
+    results: list[dict] = []
+
+    # Test clips (original/unprocessed videos)
+    test_dir = Path(PROCESSED_DIR).parent / "Test Clips"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    for p in sorted(test_dir.glob("*.mp4")):
+        results.append({"value": p.name, "label": p.name, "group": "Test Clips"})
+
+    # Annotated clips returned by Kaggle (flat mp4s in processed_clips/)
+    for p in sorted(PROCESSED_DIR.glob("*.mp4"), reverse=True)[:50]:  # latest 50
+        results.append({"value": f"processed:{p.name}", "label": p.name, "group": "Processed"})
+
+    return {"clips": [r["value"] for r in results], "clips_detailed": results}
 
 
 # ══════════════════════════════════════════════════════════
@@ -360,6 +385,10 @@ async def analytics_activity(_: dict = Depends(_get_session)):
 @app.get("/analytics/pipelines")
 async def analytics_pipelines(_: dict = Depends(_get_session)):
     return get_pipeline_distribution()
+
+@app.get("/analytics/smoking")
+async def analytics_smoking(_: dict = Depends(_get_session)):
+    return get_smoking_stats()
 
 @app.get("/analytics/user/{username}")
 async def analytics_user(username: str, _: dict = Depends(_get_session)):
@@ -524,7 +553,8 @@ async def _broadcast_and_log_alert(alert: dict):
             id_confidence= float(alert.get("id_confidence", 0.0)),
             activity_conf= float(alert.get("activity_conf", 0.0)),
             evidence_path= alert.get("evidence_path"),
-            camera_id    = camera_id
+            camera_id    = camera_id,
+            pipeline_type= alert.get("pipeline_type", "activity"),
         )
     except Exception as e:
         print(f"[main] log_event error: {e}")

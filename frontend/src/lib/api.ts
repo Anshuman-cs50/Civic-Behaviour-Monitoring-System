@@ -172,6 +172,28 @@ export const analyticsApi = {
 
   heatmap: () =>
     apiFetch<{ id: string; name: string; lat: number; lng: number; incidents: number }[]>("/analytics/heatmap"),
+
+  smokingStats: () =>
+    apiFetch<{
+      total_detections: number;
+      identified_persons: number;
+      recent_10min: number;
+      unique_offenders: number;
+      detection_rate: number;
+      events: { person_name: string; camera_id: string; timestamp: string; activity_conf: number; score_delta: number }[];
+      per_camera: { camera_id: string; count: number }[];
+      hourly: { hour: string; count: number }[];
+    }>("/analytics/smoking"),
+
+  smokingEvents: (limit = 50) =>
+    apiFetch<{
+      person_name: string;
+      activity: string;
+      score_delta: number;
+      camera_id: string;
+      timestamp: string;
+      pipeline_type: string;
+    }[]>(`/analytics/alerts/critical?limit=${limit}`),
 };
 
 export const camerasApi = {

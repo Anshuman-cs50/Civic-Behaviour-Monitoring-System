@@ -14,7 +14,7 @@ API_ENDPOINT = f"{NGROK_URL}/process_chunk"
 # ── Config — Smoking pipeline (port 8001) ──────────────────────────────────────
 # Set this to the URL shown by Cell 8 of cbms_smoking_pipeline.ipynb.
 # Leave as "" to disable the smoking pipeline client-side.
-SMOKING_NGROK_URL    = ""                                    # ← paste smoking server URL here
+SMOKING_NGROK_URL    = "https://unison-likely-catalog.ngrok-free.dev"
 SMOKING_API_ENDPOINT = f"{SMOKING_NGROK_URL}/process_chunk" if SMOKING_NGROK_URL else ""
 
 # 0 for webcam, or path to a local video file
@@ -41,13 +41,34 @@ import requests as _req
 
 
 def forward_alert_to_local(alert: dict):
-    """Forward an alert from Kaggle to your local FastAPI dashboard."""
+    """Forward an alert from Kaggle to your local FastAPI dashboard.
+    Also injects 'pipeline_type' and 'camera_id' fields so the local DB
+    correctly classifies this event under the right analytics pipeline.
+    """
     if not LOCAL_FASTAPI_URL:
         return
 
     def _post():
         try:
-            _req.post(f"{LOCAL_FASTAPI_URL}/ingest/alert", json=alert, timeout=1.0)
+            # Map the pipeline header tag to the DB field value
+            pipeline_tag  = alert.get("pipeline", "main")
+            pipeline_type = "smoking" if pipeline_tag == "smoking" else "activity"
+
+            payload = {
+                "person_name":       alert.get("person_name", "UNKNOWN"),
+                "activity":          alert.get("activity", "unknown"),
+                "score_delta":       alert.get("score_delta", 0),
+                "new_score":         alert.get("new_score", 0),
+                "id_confidence":     alert.get("id_confidence", 0.0),
+                "activity_conf":     alert.get("activity_conf", 0.0),
+                "evidence_grid_b64": alert.get("evidence_grid_b64"),
+                "frame_index":       alert.get("frame_index"),
+                # ── NEW FIELDS for dashboard routing ──────────────────────
+                "pipeline_type":     pipeline_type,
+                "location_label":    alert.get("location_label", ""),
+                "camera_id":         alert.get("camera_id", "Camera 0"),
+            }
+            _req.post(f"{LOCAL_FASTAPI_URL}/ingest/alert", json=payload, timeout=1.0)
         except Exception:
             pass
 

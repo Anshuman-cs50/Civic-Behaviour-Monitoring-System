@@ -10,6 +10,7 @@ import { Construction } from "lucide-react";
 
 import { OverviewDashboard } from "@/components/admin/OverviewDashboard";
 import { ActivityDashboard } from "@/components/admin/ActivityDashboard";
+import { SmokingDashboard } from "@/components/admin/SmokingDashboard";
 
 export default function AdminNavigationShell() {
   const router = useRouter();
@@ -92,12 +93,7 @@ export default function AdminNavigationShell() {
         {activePipeline === "overview" && <OverviewDashboard />}
         {activePipeline === "activity" && <ActivityDashboard />}
         
-        {/* Placeholders for Phase 4 & 5 */}
-        {activePipeline === "smoking" && (
-          <div className="glass rounded-2xl border border-white/5 pt-12">
-            <EmptyState icon={Construction} message="Smoking Detection Pipeline" description="This specialized zone dashboard is scheduled for Phase 4 deployment." />
-          </div>
-        )}
+        {activePipeline === "smoking" && <SmokingDashboard />}
         
         {activePipeline === "roadSafety" && (
           <div className="glass rounded-2xl border border-white/5 pt-12">
