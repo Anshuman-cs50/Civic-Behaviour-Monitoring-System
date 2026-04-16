@@ -18,6 +18,11 @@ export function ActivityDashboard() {
   const [streaming, setStreaming] = useState(false);
   const [streamInfo, setStreamInfo] = useState<Record<string, any>>({});
 
+  useEffect(() => {
+    // Clear last frame when selecting a new video source for preview
+    setLatestFrame(null);
+  }, [source]);
+
   // Live activity stats
   const [activityStats, setActivityStats] = useState({ spitting: 0, littering: 0, helping: 0 });
   const [chartData, setChartData] = useState<any[]>([]);
@@ -30,6 +35,7 @@ export function ActivityDashboard() {
         const s = await streamApi.status();
         setStreamInfo(s as any);
         setStreaming((s as any).is_streaming);
+        if (!(s as any).is_streaming) setLatestFrame(null);
       } catch {}
       try {
         const breakdown = await analyticsApi.activityBreakdown();
