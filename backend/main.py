@@ -217,7 +217,7 @@ async def me(session: dict = Depends(_get_session)):
 @app.post("/stream/start")
 async def stream_start(
     body: StreamStartRequest,
-    _: dict = Depends(_require_admin),
+    _: dict = Depends(_get_admin),
 ):
     """Start the Kaggle-remote stream."""
     # Resolve source: "0" → webcam, else look in UNPROCESSED_DIR
@@ -255,7 +255,7 @@ async def stream_start(
 
 
 @app.post("/stream/stop")
-async def stream_stop(_: dict = Depends(_require_admin)):
+async def stream_stop(_: dict = Depends(_get_admin)):
     state.stream_manager.stop()
     state.mode = "idle"
     return {"status": "stopped"}
@@ -283,7 +283,7 @@ async def stream_clips(_: dict = Depends(_get_session)):
 async def enroll(
     name: str = Form(...),
     file: UploadFile = File(...),
-    _: dict = Depends(_require_admin),
+    _: dict = Depends(_get_admin),
 ):
     contents = await file.read()
     np_arr   = np.frombuffer(contents, np.uint8)
@@ -315,7 +315,7 @@ async def events(limit: int = 100, _: dict = Depends(_get_session)):
 
 
 @app.post("/reset-scores")
-async def reset_scores(_: dict = Depends(_require_admin)):
+async def reset_scores(_: dict = Depends(_get_admin)):
     reset_all_scores()
     state.face_db = load_database()
     return {"status": "reset"}

@@ -206,7 +206,7 @@ class StreamManager:
             out.release()
             if written == 0: break
 
-             print(f"[Capture] chunk_{chunk_idx:04d} ready.")
+            print(f"[Capture] chunk_{chunk_idx:04d} ready.")
             with self._upload_cond:
                 self._unprocessed[chunk_idx] = (chunk_path, self.stats.source or "Local_Cam")
                 self._upload_cond.notify_all()
