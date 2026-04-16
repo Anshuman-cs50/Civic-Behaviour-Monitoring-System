@@ -18,11 +18,6 @@ export function ActivityDashboard() {
   const [streaming, setStreaming] = useState(false);
   const [streamInfo, setStreamInfo] = useState<Record<string, any>>({});
 
-  useEffect(() => {
-    // Clear last frame when selecting a new video source for preview
-    setLatestFrame(null);
-  }, [source]);
-
   // Live activity stats
   const [activityStats, setActivityStats] = useState({ spitting: 0, littering: 0, helping: 0 });
   const [chartData, setChartData] = useState<any[]>([]);
@@ -106,7 +101,14 @@ export function ActivityDashboard() {
               </div>
               <div className="flex-1">
                 <label className="text-[10px] text-zinc-400 font-bold uppercase mb-1 block">Source</label>
-              <select value={source} onChange={e=>setSource(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:ring-2 focus:ring-indigo-500/20">
+              <select 
+                value={source} 
+                onChange={e => {
+                  setSource(e.target.value);
+                  setLatestFrame(null); // Clear live feed when switching to replay
+                }} 
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:ring-2 focus:ring-indigo-500/20"
+              >
                 <option value="0">📷 Camera 0 (Live)</option>
                 {["Test Clips", "Processed"].map(group => {
                   const groupClips = clips.filter(c => c.group === group);
@@ -131,10 +133,15 @@ export function ActivityDashboard() {
               ) : (source && source !== "0" && !streaming) ? (
                 <video 
                   key={source} 
-                  src={`http://localhost:8000/${source.startsWith("processed:") ? "processed-clips/" + source.replace("processed:", "") : "test-clips/" + source}`} 
                   controls 
                   className="absolute inset-0 w-full h-full object-contain bg-black" 
-                />
+                >
+                  <source 
+                    src={`http://localhost:8000/${source.startsWith("processed:") ? "processed-clips/" + source.replace("processed:", "") : "test-clips/" + source}`} 
+                    type="video/mp4" 
+                  />
+                  Your browser does not support the video tag.
+                </video>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-zinc-400 text-sm font-medium">Stream offline. Configure above.</div>
               )}

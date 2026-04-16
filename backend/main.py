@@ -297,7 +297,7 @@ async def stream_clips(_: dict = Depends(_get_session)):
     # Annotated clips in session subdirs (rglob walks all subdirectories)
     proc_clips = sorted(PROCESSED_DIR.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:50]
     for p in proc_clips:
-        # Store relative path from PROCESSED_DIR so we can resolve it in /stream/start
+        # Store relative path from PROCESSED_DIR using forward slashes for URLs
         rel = p.relative_to(PROCESSED_DIR).as_posix()
         results.append({"value": f"processed:{rel}", "label": p.name, "group": "Processed"})
 
