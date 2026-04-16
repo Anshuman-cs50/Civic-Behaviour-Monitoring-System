@@ -30,6 +30,7 @@ export function ActivityDashboard() {
         const s = await streamApi.status();
         setStreamInfo(s as any);
         setStreaming((s as any).is_streaming);
+        if (!(s as any).is_streaming) setLatestFrame(null);
       } catch {}
       try {
         const breakdown = await analyticsApi.activityBreakdown();
@@ -95,12 +96,19 @@ export function ActivityDashboard() {
           <Card title="Live Feed & Controls" className="h-full flex flex-col">
             <div className="flex gap-4 mb-4 items-end">
               <div className="flex-1">
-                <label className="text-[10px] text-zinc-500 uppercase mb-1 block">Ngrok Remote</label>
-                <input value={ngrokUrl} onChange={e=>setNgrokUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-900 border border-white/10 rounded-md px-3 py-1.5 text-xs text-zinc-200" />
+                <label className="text-[10px] text-zinc-400 font-bold uppercase mb-1 block">Ngrok Remote</label>
+                <input value={ngrokUrl} onChange={e=>setNgrokUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:ring-2 focus:ring-indigo-500/20" />
               </div>
               <div className="flex-1">
-                <label className="text-[10px] text-zinc-500 uppercase mb-1 block">Source</label>
-              <select value={source} onChange={e=>setSource(e.target.value)} className="w-full bg-zinc-900 border border-white/10 rounded-md px-3 py-1.5 text-xs text-zinc-200">
+                <label className="text-[10px] text-zinc-400 font-bold uppercase mb-1 block">Source</label>
+              <select 
+                value={source} 
+                onChange={e => {
+                  setSource(e.target.value);
+                  setLatestFrame(null); // Clear live feed when switching to replay
+                }} 
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:ring-2 focus:ring-indigo-500/20"
+              >
                 <option value="0">📷 Camera 0 (Live)</option>
                 {["Test Clips", "Processed"].map(group => {
                   const groupClips = clips.filter(c => c.group === group);
@@ -114,19 +122,33 @@ export function ActivityDashboard() {
               </select>
               </div>
               <div className="flex gap-2">
-                <button onClick={handleStart} disabled={streaming} className="bg-emerald-600 disabled:opacity-50 text-white rounded-md px-4 py-1.5 text-xs font-semibold hover:bg-emerald-500 transition-colors">Start</button>
-                <button onClick={handleStop} disabled={!streaming} className="bg-red-600 disabled:opacity-50 text-white rounded-md px-4 py-1.5 text-xs font-semibold hover:bg-red-500 transition-colors">Stop</button>
+                <button onClick={handleStart} disabled={streaming} className="bg-emerald-600 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-xs font-bold hover:bg-emerald-500 transition-all shadow-md shadow-emerald-500/20">Start</button>
+                <button onClick={handleStop} disabled={!streaming} className="bg-red-600 disabled:opacity-50 text-white rounded-lg px-6 py-2 text-xs font-bold hover:bg-red-500 transition-all shadow-md shadow-red-500/20">Stop</button>
               </div>
             </div>
             
-            <div className="flex-1 min-h-[400px] bg-zinc-900 rounded-lg overflow-hidden relative border border-white/[0.05]">
+            <div className="flex-1 min-h-[400px] bg-zinc-50 rounded-xl overflow-hidden relative border border-zinc-200 shadow-inner">
               {latestFrame ? (
                 <img src={`data:image/jpeg;base64,${latestFrame}`} alt="Live Stream" className="absolute inset-0 w-full h-full object-cover" />
+              ) : (source && source !== "0" && !streaming) ? (
+                <video 
+                  key={source} 
+                  controls 
+                  className="absolute inset-0 w-full h-full object-contain bg-black" 
+                >
+                  <source 
+                    src={`http://localhost:8000/${source.startsWith("processed:") ? "processed-clips/" + source.replace("processed:", "") : "test-clips/" + source}`} 
+                    type="video/mp4" 
+                  />
+                  Your browser does not support the video tag.
+                </video>
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-sm">Stream offline. Configure above.</div>
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-400 text-sm font-medium">Stream offline. Configure above.</div>
               )}
               {streaming && (
-                <div className="absolute top-4 left-4 bg-black/60 backdrop-blur block px-2 py-1 rounded border border-white/10 text-[10px] text-emerald-400 uppercase tracking-widest font-mono">REC <span className="animate-pulse">●</span></div>
+                <div className="absolute top-4 left-4 bg-white/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-red-200 text-[10px] text-red-600 uppercase tracking-widest font-bold flex items-center gap-2">
+                  <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse" /> REC
+                </div>
               )}
             </div>
           </Card>
@@ -143,9 +165,9 @@ export function ActivityDashboard() {
                     <linearGradient id="cLit" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/></linearGradient>
                     <linearGradient id="cHelp" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
                   </defs>
-                  <XAxis dataKey="time" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }} />
+                  <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }} />
                   <Area type="monotone" dataKey="helping" stackId="1" stroke="#10b981" fill="url(#cHelp)" />
                   <Area type="monotone" dataKey="littering" stackId="1" stroke="#f59e0b" fill="url(#cLit)" />
                   <Area type="monotone" dataKey="spitting" stackId="1" stroke="#ef4444" fill="url(#cSpit)" />

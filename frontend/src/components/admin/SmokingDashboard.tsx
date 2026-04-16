@@ -57,9 +57,9 @@ export function SmokingDashboard() {
         {statTiles.map((t, i) => (
           <div
             key={i}
-            className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-4 flex flex-col items-center text-center gap-1"
+            className="bg-white border border-zinc-200 shadow-sm rounded-xl p-4 flex flex-col items-center text-center gap-1 hover:bg-zinc-50 transition-colors"
           >
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{t.label}</span>
+            <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">{t.label}</span>
             <div className={`text-3xl font-light font-mono ${t.color} ${t.pulse ? "animate-pulse" : ""}`}>
               {t.value}
             </div>
@@ -75,7 +75,7 @@ export function SmokingDashboard() {
           <Card title="Live Smoking Detections" className="h-full">
             <div className="mt-3 space-y-0 overflow-auto max-h-[480px] pr-1">
               {stats.events.length === 0 ? (
-                <div className="text-center text-zinc-600 text-sm py-16">
+                <div className="text-center text-zinc-400 text-sm py-16 font-medium">
                   No smoking detections recorded yet
                 </div>
               ) : (
@@ -86,19 +86,19 @@ export function SmokingDashboard() {
                   return (
                     <div
                       key={i}
-                      className="border-b border-white/[0.04] py-3 px-2 flex items-center gap-4 hover:bg-white/[0.02] transition-colors"
+                      className="border-b border-zinc-100 py-3 px-2 flex items-center gap-4 hover:bg-zinc-50 transition-colors"
                     >
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isUnknown ? "bg-zinc-500" : "bg-rose-500 shadow-[0_0_8px_theme(colors.rose.500)]"}`} />
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isUnknown ? "bg-zinc-300" : "bg-rose-500 shadow-[0_0_8px_theme(colors.rose.500)]"}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`font-medium text-sm ${isUnknown ? "text-zinc-400" : "text-zinc-100"}`}>
+                          <span className={`font-bold text-sm ${isUnknown ? "text-zinc-500" : "text-zinc-900"}`}>
                             {ev.person_name}
                           </span>
-                          <span className="text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded font-mono">
+                          <span className="text-[10px] bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full font-bold">
                             SMOKING
                           </span>
                         </div>
-                        <div className="text-xs text-zinc-500 mt-0.5 truncate">
+                        <div className="text-[10px] text-zinc-400 mt-0.5 truncate font-bold uppercase tracking-tight">
                           📍 {ev.camera_id}
                         </div>
                       </div>
@@ -128,10 +128,10 @@ export function SmokingDashboard() {
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="hour" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <XAxis dataKey="hour" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }}
+                    contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}
                     formatter={(val: any) => [`${val} detections`, ""]}
                   />
                   <Area type="monotone" dataKey="count" stroke="#ef4444" fill="url(#smokeGrad)" strokeWidth={2} dot={false} />
@@ -148,10 +148,10 @@ export function SmokingDashboard() {
               <div className="h-[180px] w-full mt-3">
                 <ResponsiveContainer>
                   <BarChart data={stats.per_camera} layout="vertical" margin={{ top: 0, left: 10, right: 10, bottom: 0 }}>
-                    <XAxis type="number" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis dataKey="camera_id" type="category" width={80} fontSize={9} stroke="#71717a" tickLine={false} axisLine={false} />
+                    <XAxis type="number" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                    <YAxis dataKey="camera_id" type="category" width={80} fontSize={9} stroke="#a1a1aa" tickLine={false} axisLine={false} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }}
+                      contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}
                       formatter={(val: any) => [`${val}`, "detections"]}
                     />
                     <Bar dataKey="count" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={14} />

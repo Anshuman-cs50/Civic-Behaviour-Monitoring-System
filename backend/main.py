@@ -47,7 +47,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 # ── Backend modules ────────────────────────────────────────
-from cv_pipeline.core.config import VIDEO_FPS_CAP
+from cv_pipeline.core.config import VIDEO_FPS_CAP, LOGS_DIR
 from cv_pipeline.core.config import PROCESSED_DIR   # Path object: Stream/processed_clips/
 from cv_pipeline.core.database import (
     get_event_log, init_db, list_persons, load_database,
@@ -177,9 +177,12 @@ app.add_middleware(
 )
 
 # Serve evidence frames/clips
-from cv_pipeline.core.config import LOGS_DIR
 app.mount("/evidence", StaticFiles(directory=str(LOGS_DIR)), name="evidence")
 app.mount("/processed-clips", StaticFiles(directory=str(PROCESSED_DIR)), name="processed_clips")
+
+TEST_CLIPS_DIR = Path(PROCESSED_DIR).parent / "Test Clips"
+TEST_CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/test-clips", StaticFiles(directory=str(TEST_CLIPS_DIR)), name="test_clips")
 
 
 # ══════════════════════════════════════════════════════════
@@ -295,8 +298,8 @@ async def stream_clips(_: dict = Depends(_get_session)):
     # Annotated clips in session subdirs (rglob walks all subdirectories)
     proc_clips = sorted(PROCESSED_DIR.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:50]
     for p in proc_clips:
-        # Store relative path from PROCESSED_DIR so we can resolve it in /stream/start
-        rel = str(p.relative_to(PROCESSED_DIR))
+        # Store relative path from PROCESSED_DIR using forward slashes for URLs
+        rel = p.relative_to(PROCESSED_DIR).as_posix()
         results.append({"value": f"processed:{rel}", "label": p.name, "group": "Processed"})
 
     return {"clips": [r["value"] for r in results], "clips_detailed": results}
