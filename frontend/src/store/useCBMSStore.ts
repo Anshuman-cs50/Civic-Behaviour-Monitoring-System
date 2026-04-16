@@ -12,6 +12,7 @@ export interface AlertEvent {
   score_delta:       number;
   new_score:         number;
   id_confidence:     number;
+  activity_conf?:    number;
   evidence_grid_b64?: string;
   timestamp?:        string;
 }

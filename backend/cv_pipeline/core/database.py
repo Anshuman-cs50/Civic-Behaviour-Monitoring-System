@@ -27,16 +27,24 @@ def init_db() -> None:
                 enrolled_at  TEXT    NOT NULL,
                 score        INTEGER NOT NULL DEFAULT 100
             );
-            CREATE TABLE IF NOT EXISTS events (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                person_name    TEXT    NOT NULL,
-                activity       TEXT    NOT NULL,
-                score_delta    INTEGER NOT NULL,
-                id_confidence  REAL    NOT NULL,
-                timestamp      TEXT    NOT NULL,
-                evidence_path  TEXT
-            );
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               person_name TEXT NOT NULL,
+               activity TEXT NOT NULL,
+               score_delta INTEGER NOT NULL,
+               id_confidence REAL DEFAULT 0.0,
+               activity_conf REAL DEFAULT 0.0,
+               timestamp TEXT NOT NULL,
+               evidence_path TEXT
+            )
+        """)
+        # Migration: Add activity_conf if it doesn't exist
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN activity_conf REAL DEFAULT 0.0")
+        except:
+            pass
 
 
 # ── Enrollment ─────────────────────────────────────────────
@@ -110,21 +118,23 @@ def reset_all_scores(default: int = 100) -> None:
 # ── Event log ──────────────────────────────────────────────
 
 def log_event(person_name: str, activity: str, score_delta: int,
-              id_confidence: float, evidence_path: str | None = None) -> None:
+              id_confidence: float, activity_conf: float = 0.0,
+              evidence_path: str | None = None) -> None:
     with _conn() as c:
         c.execute(
             """INSERT INTO events
-               (person_name, activity, score_delta, id_confidence, timestamp, evidence_path)
-               VALUES (?,?,?,?,?,?)""",
+               (person_name, activity, score_delta, id_confidence, activity_conf, timestamp, evidence_path)
+               VALUES (?,?,?,?,?,?,?)""",
             (person_name, activity, score_delta,
-             round(id_confidence, 4), datetime.now().isoformat(), evidence_path)
+             round(id_confidence, 4), round(activity_conf, 4),
+             datetime.now().isoformat(), evidence_path)
         )
 
 
 def get_event_log(limit: int = 100) -> list[dict]:
     with _conn() as c:
         rows = c.execute(
-            """SELECT person_name, activity, score_delta, id_confidence, timestamp
+            """SELECT person_name, activity, score_delta, id_confidence, activity_conf, timestamp, evidence_path
                FROM events ORDER BY id DESC LIMIT ?""", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]

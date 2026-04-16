@@ -40,6 +40,7 @@ from fastapi import (
     Depends, FastAPI, File, Form, HTTPException,
     UploadFile, WebSocket, WebSocketDisconnect,
 )
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -156,6 +157,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve evidence frames/clips
+from cv_pipeline.core.config import LOGS_DIR
+app.mount("/evidence", StaticFiles(directory=str(LOGS_DIR)), name="evidence")
 
 
 # ══════════════════════════════════════════════════════════
@@ -398,6 +403,20 @@ async def _broadcast_alert(alert: dict):
 
 async def _broadcast_and_log_alert(alert: dict):
     """Broadcast over WS and persist to SQLite."""
+    # 1. Consolidate evidence keys (Kaggle pipeline uses b64, Local uses path)
+    ep = alert.get("evidence_path") or alert.get("evidence_grid_b64")
+    
+    if ep:
+        # 2. If it's pure base64 (from Kaggle), add the data URI prefix for the frontend
+        if not ep.startswith("data:") and not ep.startswith("/") and len(ep) > 200:
+            ep = f"data:image/jpeg;base64,{ep}"
+        
+        # 3. If it's an absolute disk path, convert to just the filename for the /evidence route
+        elif not ep.startswith("data:") and os.path.isabs(ep):
+            ep = os.path.basename(ep)
+        
+        alert["evidence_path"] = ep
+
     await _broadcast_alert(alert)
     try:
         log_event(
@@ -405,7 +424,8 @@ async def _broadcast_and_log_alert(alert: dict):
             activity     = alert.get("activity", "unknown"),
             score_delta  = int(alert.get("score_delta", 0)),
             id_confidence= float(alert.get("id_confidence", 0.0)),
-            evidence_path= alert.get("evidence_grid_b64") or alert.get("evidence_path"),
+            activity_conf= float(alert.get("activity_conf", 0.0)),
+            evidence_path= alert.get("evidence_path"),
         )
     except Exception as e:
         print(f"[main] log_event error: {e}")

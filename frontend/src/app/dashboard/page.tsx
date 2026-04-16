@@ -213,7 +213,7 @@ export default function DashboardPage() {
                     <div>
                       <p className="font-semibold text-zinc-200">{a.person_name}</p>
                       <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-semibold capitalize ${ACTIVITY_COLOURS[a.activity] ?? "bg-zinc-500/15 text-zinc-400"}`}>
-                        {a.activity}
+                        {a.activity} {a.activity_conf ? `(${(a.activity_conf * 100).toFixed(0)}%)` : ""}
                       </span>
                     </div>
                     <div className="text-right shrink-0">

@@ -106,7 +106,12 @@ input:focus, select:focus, textarea:focus {
   transform: translateY(-1px);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0); filter: brightness(0.95); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+  cursor: not-allowed;
+  transform: none !important;
+}
 
 .btn-danger {
   background: linear-gradient(135deg, #ef4444, #dc2626);
@@ -116,6 +121,12 @@ input:focus, select:focus, textarea:focus {
 }
 .btn-danger:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
 .btn-danger:active:not(:disabled) { transform: translateY(0); }
+.btn-danger:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+  cursor: not-allowed;
+  transform: none !important;
+}
 
 .btn-ghost {
   background: rgba(255,255,255,0.06);
@@ -124,3 +135,8 @@ input:focus, select:focus, textarea:focus {
   transition: background 0.2s, color 0.2s;
 }
 .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #e4e4e7; }
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}

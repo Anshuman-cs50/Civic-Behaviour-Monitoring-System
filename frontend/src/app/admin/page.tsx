@@ -54,7 +54,15 @@ export default function AdminPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // ── Evidence tab state ─────────────────────────────────
-  const [events,     setEvents]     = useState<{ person_name: string; activity: string; score_delta: number; id_confidence: number; timestamp: string }[]>([]);
+  const [events,     setEvents]     = useState<{
+    person_name: string;
+    activity: string;
+    score_delta: number;
+    id_confidence: number;
+    activity_conf?: number;
+    timestamp: string;
+    evidence_path?: string;
+  }[]>([]);
   const [filterAct,  setFilterAct]  = useState("all");
 
   // ── WebSocket for live video ───────────────────────────
@@ -386,22 +394,39 @@ export default function AdminPage() {
                   <div className="py-12 text-center text-zinc-600">No events recorded yet</div>
                 )}
                 {filteredEvents.map((ev, i) => (
-                  <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-colors alert-enter">
-                    <div className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold border capitalize ${activityBadge(ev.activity)}`}>
-                      {ev.activity}
+                  <div key={i} className="flex flex-col p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-colors alert-enter">
+                    <div className="flex items-center gap-4">
+                      <div className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold border capitalize ${activityBadge(ev.activity)}`}>
+                        {ev.activity} {ev.activity_conf ? `(${(ev.activity_conf * 100).toFixed(0)}%)` : ""}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-zinc-200 truncate">{ev.person_name}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          conf {((ev.id_confidence ?? 0) * 100).toFixed(0)}%
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-sm font-bold mono ${ev.score_delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {ev.score_delta >= 0 ? "+" : ""}{ev.score_delta}
+                        </p>
+                        <p className="text-[10px] text-zinc-600">{ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : ""}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-200 truncate">{ev.person_name}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        conf {(ev.id_confidence * 100).toFixed(0)}%
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold mono ${ev.score_delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {ev.score_delta >= 0 ? "+" : ""}{ev.score_delta}
-                      </p>
-                      <p className="text-[10px] text-zinc-600">{new Date(ev.timestamp).toLocaleTimeString()}</p>
-                    </div>
+                    
+                    {ev.evidence_path && (
+                      <div className="mt-3 rounded-lg overflow-hidden border border-white/5 bg-black/20">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={ev.evidence_path.startsWith("data:") 
+                            ? ev.evidence_path 
+                            : `http://localhost:8000/evidence/${ev.evidence_path.split(/[\\/]/).pop()}`
+                          } 
+                          alt="Evidence" 
+                          className="w-full h-auto object-cover max-h-32 hover:max-h-none transition-all duration-300 cursor-zoom-in outline-none"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
