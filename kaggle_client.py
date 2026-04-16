@@ -17,6 +17,13 @@ API_ENDPOINT = f"{NGROK_URL}/process_chunk"
 SMOKING_NGROK_URL    = "https://unison-likely-catalog.ngrok-free.dev"
 SMOKING_API_ENDPOINT = f"{SMOKING_NGROK_URL}/process_chunk" if SMOKING_NGROK_URL else ""
 
+# ── Config — Helmet pipeline (port 8001 in helmet notebook) ───────────────────
+# Set this to the URL printed by the 'Helmet API — Cell G' cell in
+# helmet-detector (2).ipynb after you start the ngrok tunnel there.
+# Leave as "" to disable helmet detection client-side.
+HELMET_NGROK_URL    = ""   # e.g. "https://xxxx-xxxx.ngrok-free.app"
+HELMET_API_ENDPOINT = f"{HELMET_NGROK_URL}/process_chunk" if HELMET_NGROK_URL else ""
+
 # 0 for webcam, or path to a local video file
 VIDEO_SOURCE = 0
 
@@ -52,7 +59,12 @@ def forward_alert_to_local(alert: dict):
         try:
             # Map the pipeline header tag to the DB field value
             pipeline_tag  = alert.get("pipeline", "main")
-            pipeline_type = "smoking" if pipeline_tag == "smoking" else "activity"
+            if pipeline_tag == "smoking":
+                pipeline_type = "smoking"
+            elif pipeline_tag == "helmet":
+                pipeline_type = "helmet"
+            else:
+                pipeline_type = "activity"
 
             payload = {
                 "person_name":       alert.get("person_name", "UNKNOWN"),
@@ -415,6 +427,14 @@ def record_and_stream():
                 daemon=True,
             ).start()
 
+        # ── Helmet pipeline upload (parallel, if configured) ──────────────────
+        if HELMET_API_ENDPOINT:
+            threading.Thread(
+                target=send_chunk,
+                args=(chunk_path, chunk_idx, HELMET_API_ENDPOINT, "helmet"),
+                daemon=True,
+            ).start()
+
         chunk_idx += 1
 
     cap.release()
@@ -436,6 +456,10 @@ if __name__ == "__main__":
         if SMOKING_NGROK_URL:
             print(f"\n[INFO] Checking smoking pipeline at {SMOKING_NGROK_URL}/health ...")
             health_check(SMOKING_NGROK_URL, "smoking pipeline")
+
+        if HELMET_NGROK_URL:
+            print(f"\n[INFO] Checking helmet pipeline at {HELMET_NGROK_URL}/health ...")
+            health_check(HELMET_NGROK_URL, "helmet pipeline")
 
         # ── Optional: resync servers if resuming a session ────────────────────
         # Uncomment and set RESUME_FROM_CHUNK if the client crashed mid-stream:
@@ -460,6 +484,8 @@ if __name__ == "__main__":
             get_scores(NGROK_URL, "main pipeline")
             if SMOKING_NGROK_URL:
                 get_scores(SMOKING_NGROK_URL, "smoking pipeline")
+            if HELMET_NGROK_URL:
+                get_scores(HELMET_NGROK_URL, "helmet pipeline")
         finally:
             PLAYBACK_QUEUE.put(None)
             cv2.destroyAllWindows()
