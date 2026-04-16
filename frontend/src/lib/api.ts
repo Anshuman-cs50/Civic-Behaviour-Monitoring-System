@@ -169,4 +169,18 @@ export const analyticsApi = {
       trend: { timestamp: string; score: number }[];
       score: number;
     }>(`/analytics/user/${username}`),
+
+  heatmap: () =>
+    apiFetch<{ id: string; name: string; lat: number; lng: number; incidents: number }[]>("/analytics/heatmap"),
+};
+
+export const camerasApi = {
+  list: () =>
+    apiFetch<{ id: string; name: string; lat: number; lng: number; last_seen: string }[]>("/api/cameras"),
+  
+  update: (id: string, name: string, lat: number, lng: number) =>
+    apiFetch<{ status: string }>("/api/cameras", {
+      method: "POST",
+      body: JSON.stringify({ id, name, lat, lng }),
+    }),
 };

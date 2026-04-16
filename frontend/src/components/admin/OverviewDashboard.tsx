@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import CountUp from "react-countup";
 import { Card } from "@/components/ui/Card";
 import { analyticsApi, eventsApi, statusApi } from "@/lib/api";
+import { CameraManagement } from "./CameraManagement";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar,
@@ -59,6 +60,7 @@ export function OverviewDashboard() {
   const [hotspots,   setHotspots]    = useState<any[]>([]);
   const [pieData,    setPieData]      = useState<{ name: string; value: number }[]>([]);
   const [health,     setHealth]       = useState({ cpu: 0, memory: 0, gpu: 0 });
+  const [showConfig, setShowConfig]   = useState(false);
 
   // ── Polling ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -84,6 +86,10 @@ export function OverviewDashboard() {
     ? pieData
     : [{ name: "activity", value: 1 }]; // placeholder until first detection fires
 
+  if (showConfig) {
+    return <CameraManagement onClose={() => setShowConfig(false)} />;
+  }
+
   return (
     <div className="space-y-6 fade-in">
 
@@ -98,9 +104,10 @@ export function OverviewDashboard() {
         ] as const).map((m, i) => (
           <div
             key={i}
+            onClick={() => m.label === "Active Cameras" && setShowConfig(true)}
             className={`bg-white/[0.02] border ${
               (m as any).alert && m.val > 0 ? "border-red-500/30" : "border-white/[0.05]"
-            } rounded-xl p-4 flex flex-col items-center text-center justify-center gap-1`}
+            } rounded-xl p-4 flex flex-col items-center text-center justify-center gap-1 ${m.label === "Active Cameras" ? "cursor-pointer hover:bg-white/[0.04] transition-colors" : ""}`}
           >
             <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{m.label}</span>
             <div className={`text-3xl font-light font-mono ${(m as any).alert && m.val > 0 ? "text-red-400" : "text-zinc-100"}`}>

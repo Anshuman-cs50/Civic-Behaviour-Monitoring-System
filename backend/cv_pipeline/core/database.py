@@ -42,6 +42,15 @@ def init_db() -> None:
                pipeline_type TEXT DEFAULT 'activity'
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS cameras (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                lat REAL NOT NULL DEFAULT 30.336542,
+                lng REAL NOT NULL DEFAULT 77.869149,
+                last_seen TEXT
+            )
+        """)
         # Migrations
         try: c.execute("ALTER TABLE events ADD COLUMN activity_conf REAL DEFAULT 0.0")
         except: pass
@@ -126,7 +135,17 @@ def log_event(person_name: str, activity: str, score_delta: int,
               evidence_path: str | None = None,
               camera_id: str = "Camera 0",
               pipeline_type: str = "activity") -> None:
+    now = datetime.now().isoformat()
     with _conn() as c:
+        # Register camera if not exists
+        c.execute(
+            """INSERT OR IGNORE INTO cameras (id, name, last_seen)
+               VALUES (?, ?, ?)""", (camera_id, camera_id, now)
+        )
+        c.execute(
+            """UPDATE cameras SET last_seen = ? WHERE id = ?""", (now, camera_id)
+        )
+
         c.execute(
             """INSERT INTO events
                (person_name, activity, score_delta, id_confidence, activity_conf,
@@ -134,7 +153,7 @@ def log_event(person_name: str, activity: str, score_delta: int,
                VALUES (?,?,?,?,?,?,?,?,?)""",
             (person_name, activity, score_delta,
              round(id_confidence, 4), round(activity_conf, 4),
-             datetime.now().isoformat(), evidence_path, camera_id, pipeline_type)
+             now, evidence_path, camera_id, pipeline_type)
         )
 
 
@@ -303,3 +322,34 @@ def get_person_profile(name: str) -> dict:
         "trend": trend[-50:],  # last 50 events
         "score": current_score,
     }
+
+
+# ── Cameras ────────────────────────────────────────────────
+
+def get_all_cameras() -> list[dict]:
+    with _conn() as c:
+        rows = c.execute("SELECT id, name, lat, lng, last_seen FROM cameras").fetchall()
+    return [dict(r) for r in rows]
+
+def update_camera(cam_id: str, name: str, lat: float, lng: float) -> None:
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO cameras (id, name, lat, lng, last_seen)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+               name=excluded.name, lat=excluded.lat, lng=excluded.lng""",
+            (cam_id, name, lat, lng, datetime.now().isoformat())
+        )
+
+def get_heatmap_data() -> list[dict]:
+    """Returns camera coordinates and weighted intensity based on incident counts.
+       Higher severity incidents can add more weight if required, but for now it's incident count."""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT c.id, c.name, c.lat, c.lng, COUNT(e.id) as incidents
+               FROM cameras c
+               LEFT JOIN events e ON c.id = e.camera_id
+               GROUP BY c.id"""
+        ).fetchall()
+        
+    return [dict(r) for r in rows]

@@ -55,6 +55,7 @@ from cv_pipeline.core.database import (
     get_top_hotspots,
     get_overview_stats, get_hourly_trends, get_critical_alerts,
     get_activity_breakdown, get_pipeline_distribution, get_person_profile,
+    get_all_cameras, update_camera, get_heatmap_data,
 )
 from cv_pipeline.modules.face_recognizer import FaceRecognizer
 from cv_pipeline.modules.rule_engine import RuleEngine
@@ -79,7 +80,7 @@ def _get_session(token: str | None = Depends(_api_header)) -> dict:
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
-def _require_admin(session: dict = Depends(_get_session)) -> dict:
+def _get_admin(session: dict = Depends(_get_session)) -> dict:
     if session.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     return session
@@ -103,6 +104,12 @@ class PlayRequest(BaseModel):
 
 class IngestFrameRequest(BaseModel):
     frame_b64: str
+
+class CameraUpdateRequest(BaseModel):
+    id: str
+    name: str
+    lat: float
+    lng: float
 
 class IngestAlertRequest(BaseModel):
     person_name:       str
@@ -368,8 +375,6 @@ async def push_chunk(
     if not state.stream_manager or not state.stream_manager.status().get("is_streaming"):
         raise HTTPException(status_code=400, detail="Stream session not active. Start stream first.")
 
-    # Save to the current session's unprocessed directory
-    # We use StreamManager's internal path (exposed via a new helper if needed, but here we'll just use the session name)
     session_dir = Path("data/unprocessed") / state.stream_manager.status().get("session_name", "")
     session_dir.mkdir(parents=True, exist_ok=True)
     
@@ -379,6 +384,19 @@ async def push_chunk(
 
     state.stream_manager.inject_external_chunk(str(file_path), camera_id)
     return {"status": "injected", "path": str(file_path)}
+
+@app.get("/analytics/heatmap")
+async def analytics_heatmap(_: dict = Depends(_get_session)):
+    return get_heatmap_data()
+
+@app.get("/api/cameras")
+async def api_get_cameras(_: dict = Depends(_get_session)):
+    return get_all_cameras()
+
+@app.post("/api/cameras")
+async def api_update_camera(data: CameraUpdateRequest, _: dict = Depends(_get_admin)):
+    update_camera(data.id, data.name, data.lat, data.lng)
+    return {"status": "ok"}
 
 
 
