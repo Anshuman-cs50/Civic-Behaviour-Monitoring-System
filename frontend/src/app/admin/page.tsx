@@ -42,17 +42,16 @@ export default function AdminNavigationShell() {
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans dark custom-scrollbar">
+    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans light custom-scrollbar">
       
       {/* Enhanced Top Navigation Bar */}
-      <header className="border-b border-white/[0.07] bg-zinc-950/90 sticky top-0 z-50 backdrop-blur-md flex items-center px-6">
+      <header className="border-b border-zinc-200 bg-white/80 sticky top-0 z-50 backdrop-blur-md flex items-center px-6 shadow-sm">
         
-        {/* Logo Section */}
-        <div className="flex items-center gap-4 py-4 pr-8 border-r border-white/5">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+        <div className="flex items-center gap-4 py-4 pr-8 border-r border-zinc-100">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
             👁️
           </div>
-          <span className="font-bold text-sm text-zinc-100 tracking-wide uppercase">CBMS Central</span>
+          <span className="font-bold text-sm text-zinc-800 tracking-wide uppercase">CBMS Central</span>
         </div>
 
         {/* Tab Navigation */}
@@ -63,13 +62,13 @@ export default function AdminNavigationShell() {
               <button
                 key={tab.id}
                 onClick={() => setActivePipeline(tab.id)}
-                className={`relative px-6 py-4 text-[11px] font-semibold tracking-widest transition-colors ${
-                  isActive ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-300"
+                className={`relative px-6 py-4 text-[11px] font-bold tracking-widest transition-colors ${
+                  isActive ? "text-indigo-600" : "text-zinc-400 hover:text-zinc-600"
                 }`}
               >
                 {tab.label}
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_-2px_8px_rgba(99,102,241,0.5)]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600" />
                 )}
               </button>
             );
@@ -77,12 +76,12 @@ export default function AdminNavigationShell() {
         </nav>
 
         {/* Status & Actions */}
-        <div className="flex items-center gap-6 pl-6 py-4 border-l border-white/5">
+        <div className="flex items-center gap-6 pl-6 py-4 border-l border-zinc-100">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-zinc-500 uppercase font-medium">Pipeline Status:</span>
+            <span className="text-[10px] text-zinc-400 uppercase font-bold">Pipeline Status:</span>
             <StatusDot state={streamStatus?.is_streaming ? "active" : "idle"} label={streamStatus?.is_streaming ? "Active" : "Idle"} />
           </div>
-          <button onClick={handleLogout} className="text-xs font-semibold text-zinc-500 hover:text-zinc-300 transition-colors bg-white/5 hover:bg-white/10 px-4 py-1.5 rounded-md">
+          <button onClick={handleLogout} className="text-xs font-bold text-zinc-500 hover:text-indigo-600 transition-colors bg-zinc-50 hover:bg-indigo-50 px-4 py-2 rounded-lg border border-zinc-200">
             Sign out
           </button>
         </div>

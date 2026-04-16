@@ -10,12 +10,12 @@ import { analyticsApi } from '@/lib/api';
 const createMarkerIcon = (isActive: boolean) => L.divIcon({
   className: 'custom-div-icon',
   html: `<div style="
-    width: 14px; 
-    height: 14px; 
-    background: ${isActive ? '#f59e0b' : '#52525b'}; 
-    border: 2px solid #18181b;
+    width: 16px; 
+    height: 16px; 
+    background: ${isActive ? '#f59e0b' : '#94a3b8'}; 
+    border: 3px solid #ffffff;
     border-radius: 50%;
-    box-shadow: 0 0 10px ${isActive ? 'rgba(245, 158, 11, 0.5)' : 'rgba(0,0,0,0.5)'};
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 0 12px ${isActive ? 'rgba(245, 158, 11, 0.4)' : 'transparent'};
   "></div>`,
   iconSize: [14, 14],
   iconAnchor: [7, 7]
@@ -37,7 +37,7 @@ export default function GeospatialMap() {
     const map = L.map(mapRef.current).setView([30.336542, 77.869149], 15);
     leafletInstance.current = map;
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; CARTO',
       maxZoom: 19,
     }).addTo(map);
@@ -93,12 +93,12 @@ export default function GeospatialMap() {
       const marker = L.marker([cam.lat, cam.lng], { icon: createMarkerIcon(cam.incidents > 0) });
       
       const popupContent = `
-        <div style="font-family: inherit; color: #f4f4f5; background: #18181b; padding: 4px; border-radius: 4px;">
-          <div style="font-size: 10px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">${cam.id}</div>
-          <div style="font-weight: 500; margin-bottom: 6px;">${cam.name}</div>
+        <div style="font-family: inherit; color: #1f2937; background: #ffffff; padding: 4px; border-radius: 4px;">
+          <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 2px;">${cam.id}</div>
+          <div style="font-weight: 700; margin-bottom: 6px; color: #111827;">${cam.name}</div>
           <div style="display: flex; gap: 8px; font-size: 12px; align-items: center;">
-            <span style="color: ${cam.incidents > 0 ? '#ef4444' : '#a1a1aa'}">●</span> 
-            <span>${cam.incidents} Incidents</span>
+            <span style="color: ${cam.incidents > 0 ? '#ef4444' : '#9ca3af'}">●</span> 
+            <span style="font-weight: 600;">${cam.incidents} Incidents</span>
           </div>
         </div>
       `;
@@ -113,30 +113,30 @@ export default function GeospatialMap() {
   }, [heatmapData]);
 
   return (
-    <div className="w-full h-full relative border border-white/[0.05] rounded-xl overflow-hidden shadow-inner">
-      <div ref={mapRef} className="absolute inset-0 z-0 bg-zinc-900 leaflet-container-override" />
+    <div className="w-full h-full relative border border-zinc-200 rounded-xl overflow-hidden shadow-sm">
+      <div ref={mapRef} className="absolute inset-0 z-0 bg-zinc-50 leaflet-container-override" />
       
       <style dangerouslySetInnerHTML={{__html: `
         .leaflet-container-override .leaflet-popup-content-wrapper {
-          background: #18181b;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
         .leaflet-container-override .leaflet-popup-tip {
-          background: #18181b;
-          border: 1px solid rgba(255,255,255,0.1);
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
           border-top: none;
           border-left: none;
         }
       `}} />
       
       {/* Overlay Filter Placeholder */}
-      <div className="absolute top-4 right-4 z-[400] bg-zinc-950/80 backdrop-blur border border-white/10 rounded-lg p-2 text-xs flex gap-2">
-        <button className="px-2 py-1 bg-white/10 rounded hover:bg-white/20 transition-colors">All</button>
-        <button className="px-2 py-1 text-zinc-400 hover:text-white transition-colors">Activity</button>
-        <button className="px-2 py-1 text-zinc-400 hover:text-white transition-colors">Smoking</button>
-        <button className="px-2 py-1 text-zinc-400 hover:text-white transition-colors">Traffic</button>
+      <div className="absolute top-4 right-4 z-[400] bg-white/90 backdrop-blur-md border border-zinc-200 rounded-xl p-2 text-[10px] font-bold uppercase tracking-wider flex gap-2 shadow-sm">
+        <button className="px-3 py-1 bg-indigo-600 text-white rounded-lg shadow-sm">All</button>
+        <button className="px-3 py-1 text-zinc-400 hover:text-zinc-800 transition-colors">Activity</button>
+        <button className="px-3 py-1 text-zinc-400 hover:text-zinc-800 transition-colors">Smoking</button>
+        <button className="px-3 py-1 text-zinc-400 hover:text-zinc-800 transition-colors">Traffic</button>
       </div>
     </div>
   );

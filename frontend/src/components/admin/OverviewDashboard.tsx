@@ -17,8 +17,8 @@ const GeospatialMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-full bg-zinc-900 border border-white/5 rounded-xl flex items-center justify-center animate-pulse text-zinc-600 text-sm">
-        Loading Map…
+      <div className="w-full h-full bg-zinc-100 border border-zinc-200 rounded-xl flex items-center justify-center animate-pulse text-zinc-400 text-sm font-medium uppercase tracking-widest">
+        Loading Satellite Map…
       </div>
     ),
   }
@@ -105,14 +105,14 @@ export function OverviewDashboard() {
           <div
             key={i}
             onClick={() => m.label === "Active Cameras" && setShowConfig(true)}
-            className={`bg-white/[0.02] border ${
-              (m as any).alert && m.val > 0 ? "border-red-500/30" : "border-white/[0.05]"
-            } rounded-xl p-4 flex flex-col items-center text-center justify-center gap-1 ${m.label === "Active Cameras" ? "cursor-pointer hover:bg-white/[0.04] transition-colors" : ""}`}
+            className={`bg-white border ${
+              (m as any).alert && m.val > 0 ? "border-red-200 bg-red-50/30" : "border-zinc-200 shadow-sm"
+            } rounded-xl p-4 flex flex-col items-center text-center justify-center gap-1 ${m.label === "Active Cameras" ? "cursor-pointer hover:bg-zinc-50 transition-colors" : ""}`}
           >
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{m.label}</span>
-            <div className={`text-3xl font-light font-mono ${(m as any).alert && m.val > 0 ? "text-red-400" : "text-zinc-100"}`}>
+            <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">{m.label}</span>
+            <div className={`text-4xl font-light font-mono ${(m as any).alert && m.val > 0 ? "text-red-500" : "text-zinc-900"}`}>
               <CountUp end={m.val as number} duration={1.4} decimals={(m as any).suffix === "%" ? 1 : 0} preserveValue />
-              <span className="text-lg text-zinc-500">{m.suffix}</span>
+              <span className="text-lg text-zinc-400">{m.suffix}</span>
             </div>
           </div>
         ))}
@@ -148,10 +148,10 @@ export function OverviewDashboard() {
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="time" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }}
+                    contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}
                   />
                   <Area type="monotone" dataKey="road"     name="Road Safety" stackId="1" stroke="#3b82f6" fill="url(#gRoa)" />
                   <Area type="monotone" dataKey="smoking"  name="Smoking"     stackId="1" stroke="#8b5cf6" fill="url(#gSmo)" />
@@ -183,10 +183,10 @@ export function OverviewDashboard() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }}
+                  contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}
                   formatter={(val: number, name: string) => [`${val} events`, name]}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: "11px", color: "#a1a1aa" }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: "11px", color: "#71717a", fontWeight: 600 }} />
               </PieChart>
             </ResponsiveContainer>
           </Card>
@@ -206,8 +206,8 @@ export function OverviewDashboard() {
                 <XAxis type="number" hide />
                 <YAxis dataKey="name" type="category" width={70} fontSize={10} stroke="#71717a" tickLine={false} axisLine={false} />
                 <Tooltip
-                  cursor={{ fill: "rgba(255,255,255,0.02)" }}
-                  contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", fontSize: "12px", borderRadius: "8px" }}
+                  cursor={{ fill: "rgba(0,0,0,0.02)" }}
+                  contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", fontSize: "12px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}
                 />
                 <Bar dataKey="incidents" fill="#10b981" radius={[0, 4, 4, 0]} barSize={14} />
               </BarChart>
@@ -222,13 +222,13 @@ export function OverviewDashboard() {
               <p className="text-zinc-600 text-xs text-center py-6">No violations in recent history.</p>
             ) : (
               critAlerts.slice(0, 8).map((a, i) => (
-                <div key={i} className="flex gap-3 text-xs p-2 bg-white/[0.02] border border-white/[0.04] rounded-lg">
+                <div key={i} className="flex gap-3 text-xs p-2 bg-zinc-50 border border-zinc-100 rounded-lg">
                   <span className="shrink-0 text-base leading-none">{severityIcon(a.score_delta)}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-zinc-200 font-medium capitalize truncate">{a.activity.replace("_", " ")}</p>
-                    <p className="text-zinc-500 mt-0.5 truncate">@ {a.camera_id}</p>
+                    <p className="text-zinc-800 font-bold capitalize truncate">{a.activity.replace("_", " ")}</p>
+                    <p className="text-zinc-500 mt-0.5 truncate text-[10px] font-medium uppercase tracking-tight">📍 {a.camera_id}</p>
                   </div>
-                  <span className="text-zinc-600 font-mono text-[10px] shrink-0">{timeAgo(a.timestamp)}</span>
+                  <span className="text-zinc-400 font-bold text-[9px] shrink-0 uppercase">{timeAgo(a.timestamp)}</span>
                 </div>
               ))
             )}
@@ -244,13 +244,13 @@ export function OverviewDashboard() {
               { label: "Overall",    value: overallHealth, color: overallHealth < 30 ? "bg-amber-500" : "bg-emerald-500" },
             ]).map((h, i) => (
               <div key={i}>
-                <div className="flex justify-between text-xs mb-1.5">
+                <div className="flex justify-between text-[10px] mb-1.5 font-bold uppercase tracking-wider">
                   <span className="text-zinc-400">{h.label}</span>
-                  <span className="text-zinc-200 font-mono">{h.value.toFixed(0)}%</span>
+                  <span className="text-zinc-800">{h.value.toFixed(0)}%</span>
                 </div>
-                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden">
                   <div
-                    className={`h-full ${h.color} transition-all duration-700`}
+                    className={`h-full ${h.color} transition-all duration-700 shadow-[0_0_8px_rgba(16,185,129,0.3)]`}
                     style={{ width: `${h.value}%` }}
                   />
                 </div>

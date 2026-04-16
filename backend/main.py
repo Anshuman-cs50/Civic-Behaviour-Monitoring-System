@@ -47,7 +47,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 # ── Backend modules ────────────────────────────────────────
-from cv_pipeline.core.config import VIDEO_FPS_CAP
+from cv_pipeline.core.config import VIDEO_FPS_CAP, LOGS_DIR
 from cv_pipeline.core.config import PROCESSED_DIR   # Path object: Stream/processed_clips/
 from cv_pipeline.core.database import (
     get_event_log, init_db, list_persons, load_database,
@@ -176,9 +176,12 @@ app.add_middleware(
 )
 
 # Serve evidence frames/clips
-from cv_pipeline.core.config import LOGS_DIR
 app.mount("/evidence", StaticFiles(directory=str(LOGS_DIR)), name="evidence")
 app.mount("/processed-clips", StaticFiles(directory=str(PROCESSED_DIR)), name="processed_clips")
+
+TEST_CLIPS_DIR = Path(PROCESSED_DIR).parent / "Test Clips"
+TEST_CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/test-clips", StaticFiles(directory=str(TEST_CLIPS_DIR)), name="test_clips")
 
 
 # ══════════════════════════════════════════════════════════
