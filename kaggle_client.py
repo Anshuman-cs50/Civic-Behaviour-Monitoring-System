@@ -7,9 +7,15 @@ import json
 import queue
 import numpy as np
 
-# ── Config ─────────────────────────────────────────────────────────────────
-NGROK_URL    = "https://malapportioned-synostotic-freeda.ngrok-free.dev"   # paste from Cell 8 output
+# ── Config — Main pipeline ─────────────────────────────────────────────────────
+NGROK_URL    = "https://malapportioned-synostotic-freeda.ngrok-free.dev"
 API_ENDPOINT = f"{NGROK_URL}/process_chunk"
+
+# ── Config — Smoking pipeline (port 8001) ──────────────────────────────────────
+# Set this to the URL shown by Cell 8 of cbms_smoking_pipeline.ipynb.
+# Leave as "" to disable the smoking pipeline client-side.
+SMOKING_NGROK_URL    = ""                                    # ← paste smoking server URL here
+SMOKING_API_ENDPOINT = f"{SMOKING_NGROK_URL}/process_chunk" if SMOKING_NGROK_URL else ""
 
 # 0 for webcam, or path to a local video file
 VIDEO_SOURCE = 0
@@ -17,38 +23,31 @@ VIDEO_SOURCE = 0
 CHUNK_DURATION_SEC = 10
 FPS                = 15
 
-# ── Directories ────────────────────────────────────────────────────────────
-UNPROCESSED_DIR = "Stream/unprocessed_clips"
-PROCESSED_DIR   = "Stream/processed_clips"
+# ── Directories ────────────────────────────────────────────────────────────────
+UNPROCESSED_DIR  = "Stream/unprocessed_clips"
+PROCESSED_DIR    = "Stream/processed_clips"
 KEEP_UNPROCESSED = True
 KEEP_PROCESSED   = True
 
 os.makedirs(UNPROCESSED_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR,   exist_ok=True)
 
-# ── Playback queue ─────────────────────────────────────────────────────────
+# ── Playback queue ─────────────────────────────────────────────────────────────
 PLAYBACK_QUEUE = queue.Queue()
 
-# ── Global alert store — for forwarding to local FastAPI (optional) ────────
+# ── Local FastAPI dashboard forwarding ────────────────────────────────────────
 LOCAL_FASTAPI_URL = "http://localhost:8000"   # set to "" to disable forwarding
 import requests as _req
 
 
 def forward_alert_to_local(alert: dict):
-    """
-    Forward an alert from Kaggle to your local FastAPI dashboard.
-    The dashboard's /ingest/alert endpoint accepts the same alert shape.
-    """
+    """Forward an alert from Kaggle to your local FastAPI dashboard."""
     if not LOCAL_FASTAPI_URL:
         return
 
     def _post():
         try:
-            _req.post(
-                f"{LOCAL_FASTAPI_URL}/ingest/alert",
-                json=alert,
-                timeout=1.0
-            )
+            _req.post(f"{LOCAL_FASTAPI_URL}/ingest/alert", json=alert, timeout=1.0)
         except Exception:
             pass
 
@@ -64,18 +63,124 @@ def forward_frame_to_local(frame_bgr: np.ndarray):
         try:
             _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
             b64    = __import__("base64").b64encode(buf).decode()
-            _req.post(
-                f"{LOCAL_FASTAPI_URL}/ingest/frame",
-                json={"frame_b64": b64},
-                timeout=0.5
-            )
+            _req.post(f"{LOCAL_FASTAPI_URL}/ingest/frame",
+                      json={"frame_b64": b64}, timeout=0.5)
         except Exception:
             pass
 
     threading.Thread(target=_post, daemon=True).start()
 
 
-# ── Playback worker ────────────────────────────────────────────────────────
+# ── Server management helpers ─────────────────────────────────────────────────
+
+def health_check(base_url: str, label: str = "server") -> bool:
+    """
+    GET /health — returns True if server is reachable and healthy.
+    Mirrors the same endpoint on both the main and smoking pipelines.
+    """
+    try:
+        r = httpx.get(f"{base_url}/health", timeout=10.0)
+        if r.status_code == 200:
+            info = r.json()
+            print(f"[OK] {label} reachable. "
+                  f"pipeline={info.get('pipeline', 'main')}  "
+                  f"enrolled={info.get('enrolled', '?')}  "
+                  f"frame={info.get('global_frame', 0)}  "
+                  f"expected_chunk={info.get('expected_chunk', '?')}")
+            return True
+        else:
+            print(f"[WARN] {label} responded with {r.status_code}")
+            return False
+    except Exception as e:
+        print(f"[WARN] {label} health check failed: {e}")
+        return False
+
+
+def get_scores(base_url: str, label: str = "server") -> dict:
+    """
+    GET /scores — fetch per-person cumulative behaviour scores.
+    Available on both the main pipeline (port 8000) and the smoking
+    pipeline (port 8001).
+
+    Example:
+        scores = get_scores(NGROK_URL, "main pipeline")
+        smoking_scores = get_scores(SMOKING_NGROK_URL, "smoking pipeline")
+    """
+    try:
+        r = httpx.get(f"{base_url}/scores", timeout=10.0)
+        if r.status_code == 200:
+            scores = r.json()
+            print(f"[SCORES] {label}:")
+            for name, score in scores.items():
+                print(f"  {name:<25} score={score}")
+            return scores
+        else:
+            print(f"[WARN] /scores returned {r.status_code}")
+            return {}
+    except Exception as e:
+        print(f"[ERROR] /scores request failed: {e}")
+        return {}
+
+
+def reset_pipeline(base_url: str, label: str = "server") -> bool:
+    """
+    POST /reset_pipeline — tear down and re-create the pipeline on the server.
+    Also resets the sequential chunk counter back to 0.
+    Works on both main pipeline (StatefulPipeline) and smoking pipeline
+    (SmokingPipeline) — both expose this endpoint with the same interface.
+
+    Call this when you restart the client mid-stream and want the server
+    to forget all existing track state.
+
+    Example:
+        reset_pipeline(NGROK_URL, "main pipeline")
+        reset_pipeline(SMOKING_NGROK_URL, "smoking pipeline")
+    """
+    try:
+        r = httpx.post(f"{base_url}/reset_pipeline", timeout=15.0)
+        if r.status_code == 200:
+            info = r.json()
+            print(f"[RESET] {label}: {info}")
+            return True
+        else:
+            print(f"[WARN] /reset_pipeline returned {r.status_code}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] /reset_pipeline request failed: {e}")
+        return False
+
+
+def resync_server(base_url: str, chunk_idx: int, label: str = "server") -> bool:
+    """
+    POST /set_expected_chunk/{idx} — tell the server which chunk to expect next.
+
+    Use after a client restart when the server has already processed some
+    chunks (and therefore has a non-zero expected_chunk counter). Without
+    resyncing, the server would wait forever for chunk_0000 that will never
+    arrive.
+
+    Works on both pipelines — both expose /set_expected_chunk/{idx}.
+
+    Example:
+        # Client crashed after chunk 7; resume from chunk 8:
+        resync_server(NGROK_URL, chunk_idx=8, label="main pipeline")
+        resync_server(SMOKING_NGROK_URL, chunk_idx=8, label="smoking pipeline")
+    """
+    try:
+        r = httpx.post(f"{base_url}/set_expected_chunk/{chunk_idx}", timeout=10.0)
+        if r.status_code == 200:
+            info = r.json()
+            print(f"[RESYNC] {label}: {info}")
+            return True
+        else:
+            print(f"[WARN] /set_expected_chunk returned {r.status_code}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] /set_expected_chunk request failed: {e}")
+        return False
+
+
+# ── Playback worker ────────────────────────────────────────────────────────────
 
 def playback_worker():
     """Background thread — plays processed video clips as they arrive."""
@@ -98,6 +203,9 @@ def playback_worker():
                 break   # shutdown signal
 
             video_path, alerts = msg
+            # Tag pipeline source in the window title if available
+            pipeline_tag = alerts[0].get("pipeline", "") if alerts else ""
+            win_title    = f"CBMS — {pipeline_tag.upper()} Output" if pipeline_tag else "CBMS — Processed Output"
 
             cap = cv2.VideoCapture(video_path)
             frame_count = 0
@@ -107,21 +215,20 @@ def playback_worker():
                 if not ret:
                     break
 
-                # Draw alert banner if any alerts in this chunk
                 if alerts:
                     h, w = frame.shape[:2]
                     cv2.rectangle(frame, (0, 0), (w, 40), (0, 0, 200), -1)
-                    texts  = [
+                    texts = [
                         f"{a.get('person_name')} - {a.get('activity')} "
-                        f"(score: {a.get('new_score', 'N/A')})"
+                        f"(score: {a.get('new_score', 'N/A')}) "
+                        f"[{a.get('location_label', '')}]"
                         for a in alerts
                     ]
                     cv2.putText(frame, "  |  ".join(texts), (10, 28),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
-                cv2.imshow("CBMS — Processed Output", frame)
+                cv2.imshow(win_title, frame)
 
-                # Also forward every Nth frame to the local dashboard
                 if frame_count % 2 == 0:
                     forward_frame_to_local(frame)
 
@@ -136,45 +243,73 @@ def playback_worker():
             print(f"[ERROR] Playback error: {e}")
 
 
-# ── Chunk upload ───────────────────────────────────────────────────────────
+# ── Chunk upload ───────────────────────────────────────────────────────────────
 
-def send_chunk(file_path: str, chunk_idx: int):
-    """Upload one chunk to Kaggle, receive back the annotated video + alerts."""
-    print(f"[UPLOAD] Sending chunk_{chunk_idx} ({os.path.getsize(file_path)//1024} KB)...")
+def send_chunk(file_path: str, chunk_idx: int, api_endpoint: str = None,
+               pipeline_label: str = "main"):
+    """
+    Upload one chunk to a Kaggle pipeline server.
+
+    Parameters
+    ----------
+    file_path     : local path to the .mp4 chunk
+    chunk_idx     : sequential index used for server-side ordering
+    api_endpoint  : full URL of the /process_chunk endpoint.
+                    Defaults to the main pipeline's API_ENDPOINT.
+    pipeline_label: human-readable tag shown in log output ("main" / "smoking")
+
+    Response headers consumed:
+      X-Global-Frame   — server's running frame counter
+      X-Alerts         — JSON list of alert dicts (evidence grid stripped)
+      X-Chunk-Idx      — echo of the chunk index (both pipelines)
+      X-Pipeline       — "smoking" | absent (main pipeline)
+      X-Location-Type  — location context (smoking pipeline only)
+      X-Location-Label — location label  (smoking pipeline only)
+    """
+    if api_endpoint is None:
+        api_endpoint = API_ENDPOINT
+
+    print(f"[UPLOAD:{pipeline_label}] Sending chunk_{chunk_idx} "
+          f"({os.path.getsize(file_path) // 1024} KB) → {api_endpoint} ...")
     t0 = time.time()
 
     try:
         with open(file_path, "rb") as f:
             response = httpx.post(
-                API_ENDPOINT,
+                api_endpoint,
                 files={"file": (os.path.basename(file_path), f, "video/mp4")},
-                timeout=120.0
+                timeout=120.0,
             )
 
         elapsed = time.time() - t0
 
         if response.status_code == 200:
-            # Parse metadata from response headers
-            global_frame = response.headers.get("X-Global-Frame", "?")
-            alerts_str   = response.headers.get("X-Alerts", "[]")
+            global_frame   = response.headers.get("X-Global-Frame", "?")
+            alerts_str     = response.headers.get("X-Alerts", "[]")
+            pipeline_hdr   = response.headers.get("X-Pipeline", "main")
+            location_label = response.headers.get("X-Location-Label", "")
 
             try:
                 alerts = json.loads(alerts_str)
             except json.JSONDecodeError:
                 alerts = []
 
-            print(f"[OK] chunk_{chunk_idx} processed in {elapsed:.1f}s  "
+            # Attach pipeline tag to each alert for the playback worker
+            for a in alerts:
+                a["pipeline"] = pipeline_hdr
+
+            print(f"[OK:{pipeline_label}] chunk_{chunk_idx} in {elapsed:.1f}s  "
                   f"global_frame={global_frame}  alerts={len(alerts)}")
 
             for a in alerts:
-                print(f"  ALERT: {a.get('person_name')} -> {a.get('activity')} "
-                      f"(conf={a.get('activity_conf', 0):.0%}  "
-                      f"score={a.get('new_score', 'N/A')})")
-                # Forward to local FastAPI for the dashboard
+                loc = f" [{location_label}]" if location_label else ""
+                print(f"  ALERT: {a.get('person_name')} → {a.get('activity')}"
+                      f"  conf={a.get('activity_conf', 0):.0%}"
+                      f"  score={a.get('new_score', 'N/A')}{loc}")
                 forward_alert_to_local(a)
 
-            # Save the annotated video
-            processed_name = f"processed_chunk_{chunk_idx:04d}.mp4"
+            # Save annotated video
+            processed_name = f"{pipeline_label}_processed_chunk_{chunk_idx:04d}.mp4"
             processed_path = os.path.join(PROCESSED_DIR, processed_name)
             with open(processed_path, "wb") as pf:
                 pf.write(response.content)
@@ -182,20 +317,23 @@ def send_chunk(file_path: str, chunk_idx: int):
             PLAYBACK_QUEUE.put((processed_path, alerts))
 
         else:
-            print(f"[ERROR] HTTP {response.status_code}: {response.text[:200]}")
+            print(f"[ERROR:{pipeline_label}] HTTP {response.status_code}: "
+                  f"{response.text[:200]}")
 
     except httpx.ConnectError:
-        print(f"[ERROR] Cannot reach {NGROK_URL} — is the Kaggle server running?")
+        print(f"[ERROR:{pipeline_label}] Cannot reach {api_endpoint} — "
+              f"is the Kaggle server running?")
     except httpx.TimeoutException:
-        print(f"[ERROR] Timeout on chunk_{chunk_idx} — Kaggle took > 120s")
+        print(f"[ERROR:{pipeline_label}] Timeout on chunk_{chunk_idx} — "
+              f"server took > 120s")
     except Exception as e:
-        print(f"[ERROR] Unexpected error: {e}")
+        print(f"[ERROR:{pipeline_label}] Unexpected error: {e}")
     finally:
         if not KEEP_UNPROCESSED and os.path.exists(file_path):
             os.remove(file_path)
 
 
-# ── Main capture loop ──────────────────────────────────────────────────────
+# ── Main capture loop ──────────────────────────────────────────────────────────
 
 def record_and_stream():
     cap = cv2.VideoCapture(VIDEO_SOURCE)
@@ -225,7 +363,6 @@ def record_and_stream():
             out.write(frame)
             frames_written += 1
 
-            # Show local feed
             cv2.imshow("CBMS — Local Feed", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 cap.release()
@@ -240,14 +377,22 @@ def record_and_stream():
             break
 
         print(f"\n[CHUNK] chunk_{chunk_idx} ready ({frames_written} frames). "
-              f"Dispatching upload thread...")
+              f"Dispatching upload thread(s)...")
 
-        # Fire and forget — capture continues while upload happens
+        # ── Main pipeline upload ──────────────────────────────────────────────
         threading.Thread(
             target=send_chunk,
-            args=(chunk_path, chunk_idx),
-            daemon=True
+            args=(chunk_path, chunk_idx, API_ENDPOINT, "main"),
+            daemon=True,
         ).start()
+
+        # ── Smoking pipeline upload (parallel, if configured) ─────────────────
+        if SMOKING_API_ENDPOINT:
+            threading.Thread(
+                target=send_chunk,
+                args=(chunk_path, chunk_idx, SMOKING_API_ENDPOINT, "smoking"),
+                daemon=True,
+            ).start()
 
         chunk_idx += 1
 
@@ -256,28 +401,32 @@ def record_and_stream():
     print("[INFO] Capture finished.")
 
 
-# ── Entry point ────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     if "YOUR-NGROK-URL" in NGROK_URL:
         print("Set NGROK_URL at the top of this file first.")
         print("You get the URL from Cell 8 output in the Kaggle notebook.")
     else:
-        # Verify connectivity before starting
-        print(f"[INFO] Checking Kaggle server at {NGROK_URL}/health ...")
-        try:
-            r = httpx.get(f"{NGROK_URL}/health", timeout=10.0)
-            if r.status_code == 200:
-                info = r.json()
-                print(f"[OK] Server reachable. "
-                      f"enrolled={info.get('enrolled', '?')} "
-                      f"frame={info.get('global_frame', 0)}")
-            else:
-                print(f"[WARN] Server responded with {r.status_code}")
-        except Exception as e:
-            print(f"[WARN] Health check failed: {e} — proceeding anyway")
+        # ── Verify connectivity ───────────────────────────────────────────────
+        print(f"[INFO] Checking main pipeline at {NGROK_URL}/health ...")
+        health_check(NGROK_URL, "main pipeline")
 
-        # Start playback worker thread
+        if SMOKING_NGROK_URL:
+            print(f"\n[INFO] Checking smoking pipeline at {SMOKING_NGROK_URL}/health ...")
+            health_check(SMOKING_NGROK_URL, "smoking pipeline")
+
+        # ── Optional: resync servers if resuming a session ────────────────────
+        # Uncomment and set RESUME_FROM_CHUNK if the client crashed mid-stream:
+        # RESUME_FROM_CHUNK = 12
+        # resync_server(NGROK_URL,         RESUME_FROM_CHUNK, "main pipeline")
+        # resync_server(SMOKING_NGROK_URL, RESUME_FROM_CHUNK, "smoking pipeline")
+
+        # ── Optional: fetch scores before starting ────────────────────────────
+        # get_scores(NGROK_URL,         "main pipeline")
+        # get_scores(SMOKING_NGROK_URL, "smoking pipeline")
+
+        # ── Start playback worker ─────────────────────────────────────────────
         pb_thread = threading.Thread(target=playback_worker, daemon=True)
         pb_thread.start()
 
@@ -285,6 +434,11 @@ if __name__ == "__main__":
             record_and_stream()
         except KeyboardInterrupt:
             print("\n[INFO] Shutting down...")
+            # Print final scores on exit
+            print("\n── Final Scores ──────────────────────────")
+            get_scores(NGROK_URL, "main pipeline")
+            if SMOKING_NGROK_URL:
+                get_scores(SMOKING_NGROK_URL, "smoking pipeline")
         finally:
             PLAYBACK_QUEUE.put(None)
             cv2.destroyAllWindows()
