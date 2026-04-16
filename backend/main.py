@@ -232,11 +232,11 @@ async def stream_start(
     if body.source == "0":
         source = 0
     elif body.source.startswith("processed:"):
-        # Annotated clip from Stream/processed_clips/<filename>
-        clip_name = body.source[len("processed:"):]
-        clip_path = PROCESSED_DIR / clip_name
+        # Resolve relative path from PROCESSED_DIR (handles session subdirs)
+        rel_path = body.source[len("processed:"):]
+        clip_path = PROCESSED_DIR / rel_path
         if not clip_path.exists():
-            raise HTTPException(404, f"Processed clip not found: {clip_name}")
+            raise HTTPException(404, f"Processed clip not found: {rel_path}")
         source = str(clip_path)
     else:
         clip_path = Path(PROCESSED_DIR).parent / "Test Clips" / body.source
@@ -282,20 +282,21 @@ async def stream_status(_: dict = Depends(_get_session)):
 
 @app.get("/stream/clips")
 async def stream_clips(_: dict = Depends(_get_session)):
-    """List .mp4 files from both Test Clips and processed_clips.
-    Processed clips use the prefix 'processed:' to distinguish them.
-    """
+    """List .mp4 files from Test Clips and all session subdirs of processed_clips."""
     results: list[dict] = []
 
     # Test clips (original/unprocessed videos)
-    test_dir = Path(PROCESSED_DIR).parent / "Test Clips"
+    test_dir = PROCESSED_DIR.parent / "Test Clips"
     test_dir.mkdir(parents=True, exist_ok=True)
     for p in sorted(test_dir.glob("*.mp4")):
         results.append({"value": p.name, "label": p.name, "group": "Test Clips"})
 
-    # Annotated clips returned by Kaggle (flat mp4s in processed_clips/)
-    for p in sorted(PROCESSED_DIR.glob("*.mp4"), reverse=True)[:50]:  # latest 50
-        results.append({"value": f"processed:{p.name}", "label": p.name, "group": "Processed"})
+    # Annotated clips in session subdirs (rglob walks all subdirectories)
+    proc_clips = sorted(PROCESSED_DIR.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:50]
+    for p in proc_clips:
+        # Store relative path from PROCESSED_DIR so we can resolve it in /stream/start
+        rel = str(p.relative_to(PROCESSED_DIR))
+        results.append({"value": f"processed:{rel}", "label": p.name, "group": "Processed"})
 
     return {"clips": [r["value"] for r in results], "clips_detailed": results}
 
