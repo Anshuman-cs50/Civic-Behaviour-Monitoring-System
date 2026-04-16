@@ -6,21 +6,23 @@ The Civic Behaviour Monitoring System (CBMS) is an advanced, hybrid-architecture
 
 *   **Hybrid Cloud-Edge Architecture:** Runs a lightweight React/Next.js dashboard and Python relay backend locally, while offloading high-intensity GPU processing (YOLOv8, InsightFace, MediaPipe, LSTM classifiers) to a remote Kaggle server via Ngrok.
 *   **Near Real-Time Video Streaming:** Implements a strictly sequential, sliding-window chunking protocol (`StreamManager`) that records, uploads, waits for processing, and smoothly plays back the annotated video feed with virtually zero out-of-order frames. Automatic stall-resync guarantees that deadlocks are recovered seamlessly.
-*   **Deep Activity Classification:** Uses **YOLOv8** + **ByteTrack** to persistently track individuals, extracts 3D skeletal keypoints using **MediaPipe Pose**, and classifies behaviors using a custom **2-layer LSTM model**. Current targets include `littering`, `spitting`, and `normal`.
+*   **Dual Dashboard Architecture:** 
+    *   **Admin Central (`/admin`):** A **Dark Theme** macro-monitoring interface featuring multi-series streamgraphs, real-time ranked incident hotspots, global camera controls, and actionable evidence-backed alerts.
+    *   **User Performance Hub (`/dashboard`):** A gamified **Light Theme** interface for citizens showing personalized "Safety Profiles" using interactive Radar charts, dynamic progress gauges, and a timeline of recent personal civic interactions.
+*   **Persistent & Predictable State:** Uses **Zustand** alongside persistence middleware to cache critical information (auth, historical scores, alert logs) locally, surviving browser reloads and guaranteeing instantaneous UI responsiveness.
+*   **Deep Activity Classification:** Uses **YOLOv8** + **ByteTrack** to persistently track individuals, extracts 3D skeletal keypoints using **MediaPipe Pose**, and classifies behaviors using a custom **bidirectional GRU model**. Current targets include `littering`, `spitting`, and `normal`.
 *   **Identity & Face Recognition:** Uses **InsightFace** to extract high-accuracy facial embeddings. Maintains a facial recognition database where registered "known" individuals are tracked and their civic scores dynamically updated based on detected behaviors.
-*   **Automated Evidence Generation:** When an offence is confirmed over a sliding window frame buffer, the system captures a "thumbnail evidence grid" of the event sequence to prove the violation beyond doubt.
-*   **Live Interactive Dashboard:** A highly polished Next.js Admin Panel equipped with live WebSocket feeds for dual video streams (Live Raw and Annotated Processed), instant alert notifications, evidence viewing, and an automated leaderboard showing civic scores.
+*   **Automated Evidence Generation:** When an offence is confirmed over a sliding window frame buffer, the system captures a "thumbnail evidence grid" of the event sequence to prove the violation beyond doubt, along with an activity classification confidence metric.
 
 ### 🧠 Custom Activity Classifier Architecture
-The behavior classification uses a lightweight, highly optimized 2-layer LSTM designed specifically for sequential 3D skeletal keypoints. The model was trained entirely in Kaggle (`train-classifier.ipynb`) and boasts an impressively small footprint of just **167,107 parameters**, allowing for lightning-fast inference on the server side (`cbms-pipeline.ipynb`).
+The behavior classification uses a lightweight, highly optimized **Bidirectional GRU** model designed specifically for sequential 3D skeletal keypoints. The model was trained entirely in Kaggle (`train-classifier.ipynb`), utilizing nose-relative normalization and mean-pooling for translation invariance, allowing for lightning-fast inference on the server side (`cbms-pipeline.ipynb`).
 
 ```python
 import torch.nn as nn
 
 class PoseActivityClassifier(nn.Module):
     """
-    2-layer LSTM reading pose keypoint sequences.
-
+    Bidirectional 2-layer GRU with mean pooling.
     Input:  (batch, n_frames, features)  — e.g. (16, 16, 99)
     Output: (batch, num_classes)         — raw logits, pass through softmax
     """
@@ -56,9 +58,9 @@ class PoseActivityClassifier(nn.Module):
 
 ## 🛠 Tech Stack
 
-*   **Frontend:** Next.js, React, TailwindCSS, Recharts.
-*   **Local Backend:** Python, FastAPI, Uvicorn, OpenCV (Chunk creation and playback manager).
-*   **Remote Processing (Kaggle):** Python, FastAPI, PyTorch, YOLOv8 (Tracking), MediaPipe (Pose), InsightFace (Face ID), Ngrok (Tunnels).
+*   **Frontend:** Next.js (React), TypeScript, TailwindCSS (Shadcn-inspired minimalist UI), Recharts (Radar, Area, Bar charts), Zustand (State Management + Persistence).
+*   **Local Backend:** Python, FastAPI, Uvicorn, OpenCV, SQLite (Event logs & Score tracking).
+*   **Remote Processing (Kaggle):** Python, FastAPI, PyTorch (GRU Classifier), YOLOv8 (Tracking), MediaPipe (Pose), InsightFace (Face ID), Ngrok (Tunnels).
 
 ---
 

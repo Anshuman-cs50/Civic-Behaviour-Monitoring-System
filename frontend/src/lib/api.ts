@@ -108,6 +108,9 @@ export const eventsApi = {
         timestamp: string;
       }[]
     >(`/events?limit=${limit}`),
+
+  hotspots: (limit = 5) =>
+    apiFetch<{ name: string; incidents: number }[]>(`/events/hotspots?limit=${limit}`),
 };
 
 export const statusApi = {
@@ -118,4 +121,52 @@ export const statusApi = {
       is_streaming: boolean;
       global_frame: number;
     }>("/status"),
+
+  systemHealth: () =>
+    apiFetch<{
+      cpu: number;
+      memory: number;
+      gpu: number;
+    }>("/system-health"),
+};
+
+export const analyticsApi = {
+  overview: () =>
+    apiFetch<{
+      total_incidents: number;
+      critical_alerts: number;
+      detection_rate: number;
+      active_cameras: number;
+      total_cameras: number;
+      avg_latency_ms: number;
+      is_streaming: boolean;
+    }>("/analytics/overview"),
+
+  hourlyTrends: (hours = 24) =>
+    apiFetch<{ time: string; activity: number; smoking: number; roadSafety: number }[]>(
+      `/analytics/trends/hourly?hours=${hours}`
+    ),
+
+  criticalAlerts: (limit = 10) =>
+    apiFetch<{
+      person_name: string;
+      activity: string;
+      score_delta: number;
+      camera_id: string;
+      timestamp: string;
+      pipeline_type: string;
+    }[]>(`/analytics/alerts/critical?limit=${limit}`),
+
+  activityBreakdown: () =>
+    apiFetch<{ activity: string; count: number }[]>("/analytics/activity"),
+
+  pipelines: () =>
+    apiFetch<{ name: string; value: number }[]>("/analytics/pipelines"),
+
+  userProfile: (username: string) =>
+    apiFetch<{
+      radar: { subject: string; A: number }[];
+      trend: { timestamp: string; score: number }[];
+      score: number;
+    }>(`/analytics/user/${username}`),
 };

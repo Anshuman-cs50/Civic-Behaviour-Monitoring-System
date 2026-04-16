@@ -34,6 +34,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+import psutil
 import cv2
 import numpy as np
 from fastapi import (
@@ -51,6 +52,9 @@ from cv_pipeline.core.database import (
     get_event_log, init_db, list_persons, load_database,
     log_event, reset_all_scores,
     enroll_person, update_embedding,
+    get_top_hotspots,
+    get_overview_stats, get_hourly_trends, get_critical_alerts,
+    get_activity_breakdown, get_pipeline_distribution, get_person_profile,
 )
 from cv_pipeline.modules.face_recognizer import FaceRecognizer
 from cv_pipeline.modules.rule_engine import RuleEngine
@@ -309,6 +313,74 @@ async def reset_scores(_: dict = Depends(_require_admin)):
     state.face_db = load_database()
     return {"status": "reset"}
 
+@app.get("/events/hotspots")
+async def hotspots(limit: int = 5, _: dict = Depends(_get_session)):
+    return get_top_hotspots(limit)
+
+@app.get("/system-health")
+async def system_health(_: dict = Depends(_get_session)):
+    return {
+        "cpu": psutil.cpu_percent(interval=None),
+        "memory": psutil.virtual_memory().percent,
+        "gpu": 0
+    }
+
+# ── Analytics ────────────────────────────────────────────────
+
+@app.get("/analytics/overview")
+async def analytics_overview(_: dict = Depends(_get_session)):
+    """Unified admin overview tile row — combines DB stats + live stream latency."""
+    db_stats = get_overview_stats()
+    sm = state.stream_manager.status() if state.stream_manager else {}
+    return {
+        **db_stats,
+        "avg_latency_ms": round(sm.get("last_latency_s", 0) * 1000),
+        "is_streaming": sm.get("is_streaming", False),
+    }
+
+@app.get("/analytics/trends/hourly")
+async def analytics_hourly_trends(hours: int = 24, _: dict = Depends(_get_session)):
+    return get_hourly_trends(hours)
+
+@app.get("/analytics/alerts/critical")
+async def analytics_critical_alerts(limit: int = 10, _: dict = Depends(_get_session)):
+    return get_critical_alerts(limit)
+
+@app.get("/analytics/activity")
+async def analytics_activity(_: dict = Depends(_get_session)):
+    return get_activity_breakdown()
+
+@app.get("/analytics/pipelines")
+async def analytics_pipelines(_: dict = Depends(_get_session)):
+    return get_pipeline_distribution()
+
+@app.get("/analytics/user/{username}")
+async def analytics_user(username: str, _: dict = Depends(_get_session)):
+    return get_person_profile(username)
+
+@app.post("/api/ingest/push-chunk")
+async def push_chunk(
+    file: UploadFile = File(...),
+    camera_id: str = Form("Mobile_Cam"),
+    _: dict = Depends(_get_session)
+):
+    """Receives a video chunk from a mobile device and injects it into the pipeline."""
+    if not state.stream_manager or not state.stream_manager.status().get("is_streaming"):
+        raise HTTPException(status_code=400, detail="Stream session not active. Start stream first.")
+
+    # Save to the current session's unprocessed directory
+    # We use StreamManager's internal path (exposed via a new helper if needed, but here we'll just use the session name)
+    session_dir = Path("data/unprocessed") / state.stream_manager.status().get("session_name", "")
+    session_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_path = session_dir / f"pushed_{uuid.uuid4().hex[:8]}_{file.filename}"
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+
+    state.stream_manager.inject_external_chunk(str(file_path), camera_id)
+    return {"status": "injected", "path": str(file_path)}
+
+
 
 @app.get("/status")
 async def get_status():
@@ -417,6 +489,14 @@ async def _broadcast_and_log_alert(alert: dict):
         
         alert["evidence_path"] = ep
 
+    # Infer camera source if not provided in alert
+    camera_id = alert.get("camera_id")
+    if not camera_id:
+        if state.stream_manager:
+            camera_id = state.stream_manager.status().get("source", "Camera 0")
+        else:
+            camera_id = "Camera 0"
+
     await _broadcast_alert(alert)
     try:
         log_event(
@@ -426,6 +506,7 @@ async def _broadcast_and_log_alert(alert: dict):
             id_confidence= float(alert.get("id_confidence", 0.0)),
             activity_conf= float(alert.get("activity_conf", 0.0)),
             evidence_path= alert.get("evidence_path"),
+            camera_id    = camera_id
         )
     except Exception as e:
         print(f"[main] log_event error: {e}")

@@ -73,6 +73,8 @@ class StreamManager:
         self._pending_cond  = threading.Condition(threading.Lock())
         self._upload_cond   = threading.Condition(threading.Lock())
 
+        self._external_idx = 1000000 # Start external chunks at a high index to avoid collisions
+
         self._session_unproc_dir: Path = Path(UNPROCESSED_DIR)
         self._session_proc_dir:   Path = Path(PROCESSED_DIR)
 
@@ -151,6 +153,23 @@ class StreamManager:
     def status(self) -> dict:
         return self.stats.to_dict()
 
+    def inject_external_chunk(self, chunk_path: str, camera_id: str = "Mobile_Cam"):
+        """Allows pushing a video chunk from an external source (like a mobile app)."""
+        print(f"[StreamManager] External chunk injected: {chunk_path} from {camera_id}")
+        
+        if not self.stats.is_streaming:
+            print("[StreamManager] WARNING: Injection ignored. Stream not active.")
+            return
+
+        with self._upload_cond:
+            idx = self._external_idx
+            self._unprocessed[idx] = (chunk_path, camera_id)
+            self._external_idx += 1
+            self._upload_cond.notify_all()
+        
+        # Update source stats temporarily or per-chunk if needed
+        # self.stats.source = f"Injected: {camera_id}"
+
     # ?? Internal ? Capture loop ????????????????????????????
     def _capture_loop(self):
         source = self._source
@@ -187,9 +206,9 @@ class StreamManager:
             out.release()
             if written == 0: break
 
-            print(f"[Capture] chunk_{chunk_idx:04d} ready.")
+             print(f"[Capture] chunk_{chunk_idx:04d} ready.")
             with self._upload_cond:
-                self._unprocessed[chunk_idx] = chunk_path
+                self._unprocessed[chunk_idx] = (chunk_path, self.stats.source or "Local_Cam")
                 self._upload_cond.notify_all()
 
             chunk_idx += 1
@@ -218,11 +237,11 @@ class StreamManager:
                     continue
 
                 chunk_idx = self._current_upload_idx
-                chunk_path = self._unprocessed[chunk_idx]
+                chunk_path, chunk_source = self._unprocessed[chunk_idx]
 
             t0 = time.time()
             try:
-                print(f"[Upload] Sending chunk_{chunk_idx:04d} -> {self._api_ep}")
+                print(f"[Upload] Sending chunk_{chunk_idx:04d} ({chunk_source}) -> {self._api_ep}")
                 with open(chunk_path, "rb") as f:
                     response = httpx.post(
                         self._api_ep,
@@ -252,6 +271,8 @@ class StreamManager:
                         self._pending_cond.notify_all()
 
                     for a in alerts:
+                        # Append the specific source of this chunk to the alert data
+                        a["camera_id"] = chunk_source
                         threading.Thread(target=self._on_alert, args=(a,), daemon=True).start()
 
                     # Success, move to next!
@@ -333,7 +354,8 @@ class StreamManager:
             if not KEEP_UNPROCESSED:
                 with self._upload_cond:
                     if play_idx in self._unprocessed:
-                        try: Path(self._unprocessed[play_idx]).unlink(missing_ok=True)
+                        path_to_delete, _ = self._unprocessed[play_idx]
+                        try: Path(path_to_delete).unlink(missing_ok=True)
                         except: pass
                         del self._unprocessed[play_idx]
 

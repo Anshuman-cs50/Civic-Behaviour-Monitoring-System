@@ -46,6 +46,8 @@ export interface StreamStatus {
   global_frame:     number;
 }
 
+export type DetectionMode = 'activity' | 'smoking' | 'roadSafety';
+
 // ── Store ──────────────────────────────────────────────────
 
 interface CBMSState {
@@ -78,6 +80,22 @@ interface CBMSState {
   // Stream status (polled from backend)
   streamStatus:    StreamStatus | null;
   setStreamStatus: (s: StreamStatus) => void;
+
+  // Detection System
+  detectionMode:   DetectionMode;
+  setDetectionMode: (mode: DetectionMode) => void;
+  activeStreams:   Record<string, string>;
+  setActiveStream: (cameraId: string, status: string) => void;
+
+  // Enhancements: Multi-Pipeline State
+  activePipeline: 'overview' | 'activity' | 'smoking' | 'roadSafety';
+  setActivePipeline: (p: 'overview' | 'activity' | 'smoking' | 'roadSafety') => void;
+  
+  pipelineData: {
+    activity: { incidents: any[]; trends: any[]; hotspots: any[] };
+    smoking: { incidents: any[]; zones: any[]; compliance: any[] };
+    roadSafety: { violations: any[]; vehicles: any[]; intersections: any[] };
+  };
 }
 
 const DEFAULT_AUTH: AuthState = { token: null, role: null, username: null };
@@ -125,12 +143,30 @@ export const useCBMSStore = create<CBMSState>()(
 
       // ── Stream ────────────────────────────────────────
       streamStatus:    null,
-      setStreamStatus: (s) => set({ streamStatus: s }),
+      // ── Detection System ──────────────────────────────
+      detectionMode:   'activity',
+      setDetectionMode: (mode) => set({ detectionMode: mode }),
+      activeStreams:   {},
+      setActiveStream: (cameraId, status) =>
+        set((s) => ({ activeStreams: { ...s.activeStreams, [cameraId]: status } })),
+
+      // ── Multi-Pipeline ──────────────────────────────
+      activePipeline: 'overview',
+      setActivePipeline: (p) => set({ activePipeline: p }),
+      pipelineData: {
+        activity: { incidents: [], trends: [], hotspots: [] },
+        smoking: { incidents: [], zones: [], compliance: [] },
+        roadSafety: { violations: [], vehicles: [], intersections: [] },
+      },
     }),
     {
       name:    "cbms-auth",
-      // Only persist auth — the rest is transient runtime state
-      partialize: (s) => ({ auth: s.auth }),
+      // Persist auth, alerts, and scoreHistory as per PRD
+      partialize: (s) => ({ 
+        auth: s.auth,
+        alerts: s.alerts,
+        scoreHistory: s.scoreHistory
+      }),
     }
   )
 );

@@ -1,273 +1,202 @@
 "use client";
-// frontend/src/app/dashboard/page.tsx
-// User-facing read-only dashboard — live feed + alerts + leaderboard.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCBMSStore, AlertEvent } from "@/store/useCBMSStore";
+import { useCBMSStore } from "@/store/useCBMSStore";
+import { authApi, analyticsApi } from "@/lib/api";
 import { useWebSocket } from "@/lib/useWebSocket";
-import { personsApi, authApi, statusApi } from "@/lib/api";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+import { Card } from "@/components/ui/Card";
+import { ActivityBadge } from "@/components/ui/ActivityBadge";
+import { 
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, 
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, Cell
 } from "recharts";
 
-// ── Activity badge colours ─────────────────────────────────
-const ACTIVITY_COLOURS: Record<string, string> = {
-  spitting:  "bg-red-500/15 text-red-400",
-  littering: "bg-orange-500/15 text-orange-400",
-  fighting:  "bg-red-700/15 text-red-300",
-  helping:   "bg-emerald-500/15 text-emerald-400",
-  normal:    "bg-zinc-500/15 text-zinc-400",
-};
+export default function UserDashboardPage() {
+  const router = useRouter();
+  const auth = useCBMSStore((s) => s.auth);
+  const clearAuth = useCBMSStore((s) => s.clearAuth);
+  
+  const pushAlert = useCBMSStore((s) => s.pushAlert);
+  const alerts = useCBMSStore((s) => s.alerts);
+  const scoreHistory = useCBMSStore((s) => s.scoreHistory);
 
-export default function DashboardPage() {
-  const router      = useRouter();
-  const auth        = useCBMSStore((s) => s.auth);
-  const clearAuth   = useCBMSStore((s) => s.clearAuth);
-  const latestFrame = useCBMSStore((s) => s.latestFrame);
-  const setFrame    = useCBMSStore((s) => s.setLatestFrame);
-  const setVideo    = useCBMSStore((s) => s.setVideoConnected);
-  const setAlert    = useCBMSStore((s) => s.setAlertConnected);
-  const pushAlert   = useCBMSStore((s) => s.pushAlert);
-  const alerts      = useCBMSStore((s) => s.alerts);
-  const persons     = useCBMSStore((s) => s.persons);
-  const setPersons  = useCBMSStore((s) => s.setPersons);
-  const scoreHistory= useCBMSStore((s) => s.scoreHistory);
-  const videoOk     = useCBMSStore((s) => s.videoConnected);
-  const alertOk     = useCBMSStore((s) => s.alertConnected);
-
-  // ── Auth guard ─────────────────────────────────────────
   useEffect(() => {
     if (!auth.token) router.replace("/login");
   }, [auth, router]);
 
-  // ── Polling ────────────────────────────────────────────
-  useEffect(() => {
-    personsApi.list().then(setPersons).catch(() => {});
-    const iv = setInterval(() => personsApi.list().then(setPersons).catch(() => {}), 8000);
-    return () => clearInterval(iv);
-  }, [setPersons]);
+  // Handle live incoming websocket alerts
+  useWebSocket("ws://localhost:8000/ws/alerts", { 
+    onMessage: (d: any) => { if (d.type === "alert") pushAlert(d); } 
+  });
 
-  const [status, setStatus] = useState({ mode: "idle", enrolled: 0, is_streaming: false });
-  useEffect(() => {
-    statusApi.get().then(setStatus).catch(() => {});
-    const iv = setInterval(() => statusApi.get().then(setStatus).catch(() => {}), 4000);
-    return () => clearInterval(iv);
-  }, [setStatus]);
-
-  // ── WebSockets ─────────────────────────────────────────
-  const onVideo = useCallback((data: unknown) => {
-    const msg = data as { type: string; data: string };
-    if (msg.type === "frame") { setFrame(msg.data); setVideo(true); }
-  }, [setFrame, setVideo]);
-
-  const onAlerts = useCallback((data: unknown) => {
-    const msg = data as { type: string } & AlertEvent;
-    if (msg.type === "alert") { pushAlert(msg); setAlert(true); }
-  }, [pushAlert, setAlert]);
-
-  useWebSocket("ws://localhost:8000/ws/video",  { onMessage: onVideo,  reconnectDelay: 2000 });
-  useWebSocket("ws://localhost:8000/ws/alerts", { onMessage: onAlerts, reconnectDelay: 2000 });
-
-  // ── Logout ─────────────────────────────────────────────
   const handleLogout = async () => {
     await authApi.logout().catch(() => {});
     clearAuth();
     router.replace("/login");
   };
 
-  // ── Unique person lines ────────────────────────────────
-  const personLines = Array.from(new Set(scoreHistory.map((h) => h.name)));
-  const LINE_COLS   = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#06b6d4"];
+  // ── Live personalized profile ──────────────────────────
+  const [profile, setProfile] = useState<{
+    radar: { subject: string; A: number }[];
+    trend: { timestamp: string; score: number }[];
+    score: number;
+  }>({ radar: [], trend: [], score: 100 });
+
+  useEffect(() => {
+    if (!auth.username) return;
+    const fetch = async () => {
+      try {
+        const p = await analyticsApi.userProfile(auth.username!);
+        setProfile(p);
+      } catch {}
+    };
+    fetch();
+    const iv = setInterval(fetch, 15000);
+    return () => clearInterval(iv);
+  }, [auth.username]);
+
+  // Radar: use live data if available, else show 5 neutral axes as placeholder
+  const radarData = profile.radar.length > 0
+    ? profile.radar
+    : [
+        { subject: "Rule Adherence",  A: 75 },
+        { subject: "Civic Actions",   A: 75 },
+        { subject: "Non-Littering",   A: 75 },
+        { subject: "Non-Spitting",    A: 75 },
+        { subject: "Overall Score",   A: 75 },
+      ];
+
+  // Trend: use live if available, else fall back to Zustand scoreHistory for the user
+  const trendData = profile.trend.length > 0
+    ? profile.trend
+    : scoreHistory
+        .filter(h => h.name === (auth.username ?? "UNKNOWN"))
+        .slice(-20);
+
+  const userScore = profile.score ?? (alerts.length > 0 ? alerts[0].new_score : 100);
 
   return (
-    <div className="min-h-screen bg-zinc-950" style={{ fontFamily: "Inter, sans-serif" }}>
-      {/* ── Header ── */}
-      <header className="border-b border-white/[0.07] px-6 py-3 flex items-center justify-between glass">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-            <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-            </svg>
-          </div>
-          <span className="font-semibold text-sm text-zinc-200">CBMS Dashboard</span>
-          {status.is_streaming && (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-              <span className="dot-live" /> LIVE
-            </span>
-          )}
-        </div>
-
+    // Note: Deliberately avoiding 'dark' class enforcement here to respect light theme
+    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans custom-scrollbar">
+      {/* Header */}
+      <header className="border-b border-zinc-200 px-6 py-3 flex items-center justify-between bg-white/80 sticky top-0 z-10 backdrop-blur-md shadow-sm">
         <div className="flex items-center gap-4">
-          <StatusDot ok={videoOk} label="Video" />
-          <StatusDot ok={alertOk} label="Alerts" />
-          <span className="text-zinc-600 text-xs">|</span>
-          <span className="text-zinc-400 text-xs">{auth.username}</span>
-          <button onClick={handleLogout} className="btn-ghost text-xs px-3 py-1.5 rounded-lg">
+          <div className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-xl shadow-sm">
+            👤
+          </div>
+          <div>
+            <h1 className="font-semibold text-lg text-zinc-800 leading-tight">{auth.username || 'Citizen'}</h1>
+            <p className="text-[11px] text-zinc-500 font-medium">Safety Score: <span className={userScore > 75 ? "text-emerald-600" : "text-amber-600"}>{userScore}/200</span></p>
+          </div>
+        </div>
+        <div className="flex items-center gap-6">
+          <button onClick={handleLogout} className="text-xs font-semibold text-zinc-500 hover:text-zinc-800 transition-colors bg-zinc-100 hover:bg-zinc-200 px-4 py-2 rounded-lg">
             Sign out
           </button>
         </div>
       </header>
 
-      {/* ── System status banner ── */}
-      {!status.is_streaming && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 text-xs text-amber-400 text-center">
-          System is currently <strong>inactive</strong> — contact an administrator to start monitoring.
-        </div>
-      )}
-
-      {/* ── Main grid ── */}
-      <div className="grid grid-cols-12 gap-4 p-5 max-w-screen-xl mx-auto">
-
-        {/* Left — video feed */}
-        <section className="col-span-5 space-y-4">
-          <Card title="Live Annotated Feed">
-            <div className="aspect-video bg-zinc-900/80 rounded-xl overflow-hidden flex items-center justify-center">
-              {latestFrame ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`data:image/jpeg;base64,${latestFrame}`} alt="Live feed" className="w-full h-full object-cover" />
-              ) : (
-                <div className="text-center">
-                  <div className="text-4xl mb-3">📡</div>
-                  <p className="text-zinc-500 text-sm">Waiting for video stream…</p>
+      <main className="p-6 max-w-screen-xl mx-auto space-y-6">
+        
+        <div className="grid grid-cols-12 gap-6">
+          
+          {/* Left Column: Charts */}
+          <div className="col-span-12 md:col-span-8 flex flex-col gap-6">
+            
+            <div className="grid grid-cols-2 gap-6">
+              {/* Radar Chart */}
+              <Card title="Safety Profile">
+                <div className="h-[250px] w-full mt-2">
+                  <ResponsiveContainer>
+                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                      <PolarGrid stroke="#e4e4e7" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#71717a', fontSize: 10 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
+                      <Radar name="Citizen" dataKey="A" stroke="#10b981" fill="#10b981" fillOpacity={0.4} />
+                    </RadarChart>
+                  </ResponsiveContainer>
                 </div>
-              )}
-            </div>
-          </Card>
+              </Card>
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-3 gap-3">
-            <StatTile label="Enrolled" value={String(status.enrolled)} />
-            <StatTile label="Alerts"   value={String(alerts.length)} accent />
-            <StatTile label="Mode"     value={status.mode.toUpperCase()} />
+              {/* Activity Metric Gauges (Mocking with Bar for minimal dependencies) */}
+              <Card title="Factor Deep-Dive">
+                <div className="h-[250px] w-full pt-4">
+                  <ResponsiveContainer>
+                    <BarChart layout="vertical" data={radarData} margin={{ top: 0, left: -20, right: 10, bottom: 0 }}>
+                      <XAxis type="number" hide domain={[0, 150]} />
+                      <YAxis dataKey="subject" type="category" fontSize={10} stroke="#71717a" axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{fill: '#f4f4f5'}} contentStyle={{ borderRadius: '8px', border: '1px solid #e4e4e7', fontSize: '12px' }} />
+                      <Bar dataKey="A" radius={[0, 4, 4, 0]} barSize={16}>
+                        {radarData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.A > 100 ? '#10b981' : entry.A > 80 ? '#f59e0b' : '#ef4444'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            {/* 30-Day Trend */}
+            <Card title="30-Day Trend (Global Score)">
+              <div className="h-[200px] w-full mt-4">
+                <ResponsiveContainer>
+                  <AreaChart data={trendData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="timestamp" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => v.split("T")?.[1]?.slice(0, 5) ?? v} />
+                    <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} domain={[0, 'dataMax + 20']} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e4e4e7', fontSize: '12px' }} />
+                    <Area type="step" dataKey="score" stroke="#10b981" strokeWidth={3} fill="url(#colorScore)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
           </div>
-        </section>
 
-        {/* Centre — score trend */}
-        <section className="col-span-4 space-y-4">
-          <Card title="Civic Score Trends">
-            <div className="h-[280px] w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={scoreHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="timestamp" stroke="#52525b" fontSize={9}
-                    tickFormatter={(v) => v.split("T")?.[1]?.slice(0, 5) ?? v} />
-                  <YAxis domain={[0, 200]} stroke="#52525b" fontSize={9} />
-                  <Tooltip
-                    contentStyle={{ background: "#09090b", border: "1px solid #27272a", fontSize: 10, borderRadius: 8 }}
-                    itemStyle={{ fontSize: 10 }}
-                  />
-                  {personLines.map((name, i) => (
-                    <Line key={name} type="monotone"
-                      data={scoreHistory.filter((h) => h.name === name)}
-                      dataKey="score" name={name}
-                      stroke={LINE_COLS[i % LINE_COLS.length]}
-                      dot={false} strokeWidth={2}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
-          {/* Leaderboard */}
-          <Card title={`Leaderboard (${persons.length})`}>
-            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {persons.length === 0 && (
-                <p className="text-zinc-600 text-xs py-4 text-center">No persons enrolled</p>
-              )}
-              {persons.map((p, i) => {
-                const bar = Math.min(100, Math.max(0, p.score));
-                return (
-                  <div key={p.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/[0.04] transition-colors">
-                    <span className="text-zinc-600 text-xs w-4">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-zinc-200 font-medium truncate">{p.name}</p>
-                      <div className="w-full h-1 bg-zinc-800 rounded-full mt-1 overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${bar}%`, background: bar > 75 ? "#10b981" : bar > 40 ? "#f59e0b" : "#ef4444" }} />
+          {/* Right Column: Timeline */}
+          <div className="col-span-12 md:col-span-4 h-full flex flex-col">
+            <Card title="Recent Events Feed" className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-y-auto pr-2 space-y-3 mt-2 pb-4">
+                {alerts.length === 0 ? (
+                  <div className="py-12 text-center text-zinc-400 text-sm">No recent incidents detected. Keep it up!</div>
+                ) : (
+                  alerts.map((a, i) => (
+                    <div key={i} className="flex gap-4 p-3 bg-white border border-zinc-100 rounded-xl shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] alert-enter">
+                      <div className="shrink-0 flex items-center justify-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg leading-none ${a.score_delta >= 0 ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"}`}>
+                          {a.score_delta >= 0 ? "+" : "-"}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <ActivityBadge activity={a.activity} confidence={a.activity_conf} />
+                          <span className="text-[10px] text-zinc-400 font-medium">
+                            {a.timestamp ? new Date(a.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-zinc-700 mt-1.5 leading-tight">
+                          {a.score_delta >= 0 ? "Positive contribution recorded" : "Violation detected"}
+                        </p>
+                        <p className="text-xs text-zinc-500 mt-1 truncate">Total Score: {a.new_score}</p>
                       </div>
                     </div>
-                    <span className={`text-xs font-bold mono ${p.score > 75 ? "text-emerald-400" : p.score > 40 ? "text-amber-400" : "text-red-400"}`}>
-                      {p.score}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        </section>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
 
-        {/* Right — alert feed */}
-        <section className="col-span-3">
-          <Card title={`Recent Alerts (${alerts.length})`}>
-            <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
-              {alerts.length === 0 && (
-                <p className="text-zinc-600 text-xs py-8 text-center">No alerts yet</p>
-              )}
-              {alerts.map((a, i) => (
-                <div key={i} className="p-3 glass rounded-xl text-xs alert-enter border border-white/[0.06]">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-zinc-200">{a.person_name}</p>
-                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-semibold capitalize ${ACTIVITY_COLOURS[a.activity] ?? "bg-zinc-500/15 text-zinc-400"}`}>
-                        {a.activity} {a.activity_conf ? `(${(a.activity_conf * 100).toFixed(0)}%)` : ""}
-                      </span>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`font-bold mono ${a.score_delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {a.score_delta >= 0 ? "+" : ""}{a.score_delta}
-                      </p>
-                      <p className="text-zinc-600 text-[10px] mt-0.5">
-                        {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : ""}
-                      </p>
-                    </div>
-                  </div>
-                  {a.id_confidence > 0 && (
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <div className="flex-1 h-0.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-indigo-500/60 rounded-full" style={{ width: `${a.id_confidence * 100}%` }} />
-                      </div>
-                      <span className="text-zinc-600 text-[10px]">{(a.id_confidence * 100).toFixed(0)}% ID conf</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-// ── Shared sub-components ──────────────────────────────────
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="glass rounded-2xl p-4">
-      <h2 className="text-[10px] uppercase tracking-widest text-zinc-500 mb-3">{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function StatusDot({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-zinc-400">
-      <span className={`w-2 h-2 rounded-full ${ok ? "bg-emerald-400" : "bg-zinc-600"}`} />
-      {label}
-    </span>
-  );
-}
-
-function StatTile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="glass rounded-xl p-3 text-center">
-      <p className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold mono ${accent ? "text-red-400" : "text-zinc-200"}`}>{value}</p>
+        </div>
+      </main>
     </div>
   );
 }
