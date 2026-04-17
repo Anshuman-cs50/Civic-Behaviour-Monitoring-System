@@ -1,5 +1,5 @@
 export const ACTIVITY_COLOURS: Record<string, string> = {
-  spitting: '#ef4444', // red
+  littering: '#f59e0b', // amber
   littering: '#f59e0b', // amber
   helping: '#10b981', // green
   smoking: '#8b5cf6', // purple

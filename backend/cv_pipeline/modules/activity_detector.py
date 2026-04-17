@@ -4,7 +4,7 @@
 # Pose landmarks. No GPU needed — runs well on CPU.
 #
 # Current activities:
-#   "spitting"  — mouth-open ratio + forward head lean sustained
+# Current activities:
 #                 across ACTIVITY_HEAD_FORWARD_FRAMES consecutive frames
 #   "normal"    — default
 #
@@ -47,7 +47,7 @@ class ActivityDetector:
 
         Returns:
             (activity_label: str, confidence: float)
-            e.g. ("spitting", 0.82) or ("normal", 0.0)
+            e.g. ("normal", 0.0)
         """
         crop = self._crop(frame, bbox)
         if crop is None:
@@ -123,7 +123,7 @@ class ActivityDetector:
     def _classify(self, track_id: int,
                   features: dict) -> tuple[str, float]:
         """
-        Spitting heuristic:
+        Activity heuristic (no spitting):
           mouth_open AND head_forward sustained for N consecutive frames
         """
         self._history[track_id].append(
@@ -140,7 +140,7 @@ class ActivityDetector:
                 if conf >= ACTIVITY_CONFIDENCE_THRESHOLD:
                     # Clear history to avoid repeated firing on same gesture
                     self._history[track_id].clear()
-                    return "spitting", round(conf, 2)
+                    # Default removed spitting
 
         return "normal", 0.0
 

@@ -47,7 +47,7 @@ TRACKER_IOU_THRESHOLD   = 0.45
 TRACKER_MAX_AGE         = 30        # frames before a lost track is dropped
 
 # ── Activity detector (MediaPipe heuristics) ───────────────
-# These values were tuned for "spitting" detection.
+  
 # Adjust thresholds after testing with your own gestures.
 ACTIVITY_MOUTH_OPEN_RATIO       = 0.08   # lip distance / face height
 ACTIVITY_HEAD_FORWARD_FRAMES    = 3      # consecutive frames of forward lean
@@ -67,7 +67,7 @@ FACE_ID_MIN_CONFIDENCE  = 0.45           # minimum aggregated confidence to act
 # ── Rule engine ────────────────────────────────────────────
 # { activity_label: (score_delta, min_identity_confidence, log_evidence) }
 ACTIVITY_RULES: dict[str, tuple[int, float, bool]] = {
-    "spitting":     (-10,  0.75,  True),
+
     "littering":    (-15,  0.80,  True),
     "fighting":     (-25,  0.80,  True),
     "helping":      (+10,  0.70,  True),

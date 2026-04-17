@@ -8,7 +8,7 @@
 import { useCBMSStore } from "@/store/useCBMSStore";
 
 const ACTIVITY_COLORS: Record<string, string> = {
-  spitting:  "text-red-400 bg-red-950/40",
+  littering: "text-amber-400 bg-amber-950/40",
   littering: "text-orange-400 bg-orange-950/40",
   fighting:  "text-red-500 bg-red-950/60",
   helping:   "text-emerald-400 bg-emerald-950/40",

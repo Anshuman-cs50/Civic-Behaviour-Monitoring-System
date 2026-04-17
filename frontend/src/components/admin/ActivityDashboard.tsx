@@ -17,7 +17,7 @@ export function ActivityDashboard() {
   const [clips, setClips] = useState<{ value: string; label: string; group: string }[]>([]);
   
   // Live activity stats
-  const [activityStats, setActivityStats] = useState({ spitting: 0, littering: 0, helping: 0 });
+  const [activityStats, setActivityStats] = useState({ littering: 0, helping: 0 });
   const [chartData, setChartData] = useState<any[]>([]);
   const [totalIdentified, setTotalIdentified] = useState(0);
   const [totalEvents, setTotalEvents] = useState(0);
@@ -29,7 +29,7 @@ export function ActivityDashboard() {
         const map: Record<string, number> = {};
         breakdown.forEach(r => { map[r.activity] = r.count; });
         setActivityStats({
-          spitting:  map["spitting"]  ?? 0,
+          // spitting class stripped
           littering: map["littering"] ?? 0,
           helping:   map["helping"]   ?? 0,
         });
@@ -77,7 +77,7 @@ export function ActivityDashboard() {
     <div className="space-y-6 fade-in">
       {/* Metrics Row */}
       <div className="grid grid-cols-4 gap-4">
-        <StatTile label="Spitting Events"   value={activityStats.spitting} color="bg-red-50 text-red-600 border-red-100" />
+        {/* Spitting Events Tile Removed */}
         <StatTile label="Littering Events"  value={activityStats.littering} color="bg-amber-50 text-amber-600 border-amber-100" />
         <StatTile label="Social Help"       value={activityStats.helping} color="bg-emerald-50 text-emerald-600 border-emerald-100" />
         <StatTile label="ID Accuracy"       value={detectionRate} color="bg-indigo-50 text-indigo-600 border-indigo-100" />
@@ -175,7 +175,7 @@ export function ActivityDashboard() {
                   <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e2e8f0", fontSize: "11px", borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }} />
                   <Area type="monotone" dataKey="helping" stackId="1" stroke="#10b981" fill="url(#cHelp)" strokeWidth={2} />
                   <Area type="monotone" dataKey="littering" stackId="1" stroke="#f59e0b" fill="url(#cLit)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="spitting" stackId="1" stroke="#ef4444" fill="url(#cSpit)" strokeWidth={2} />
+                  {/* Spitting Area Removed */}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -188,7 +188,7 @@ export function ActivityDashboard() {
                 <div key={i} className="flex items-center justify-between p-3 bg-zinc-50 border border-zinc-100 rounded-xl">
                   <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">{d.time}</span>
                   <div className="flex gap-2">
-                    {d.spitting > 0 && <span className="w-2 h-2 rounded-full bg-red-500" title="Spitting" />}
+                    {/* Spitting Status Dot Removed */}
                     {d.littering > 0 && <span className="w-2 h-2 rounded-full bg-amber-500" title="Littering" />}
                     {d.helping > 0 && <span className="w-2 h-2 rounded-full bg-emerald-500" title="Helping" />}
                   </div>

@@ -401,14 +401,14 @@ def get_person_profile(name: str) -> dict:
     positive = sum(1 for e in events if e["score_delta"] >= 0)
     helping  = sum(1 for e in events if e["activity"] == "helping")
     littering = sum(1 for e in events if e["activity"] == "littering")
-    spitting  = sum(1 for e in events if e["activity"] == "spitting")
+
 
     # Scale all values 0-150 for the radar chart
     radar = [
         {"subject": "Rule Adherence",    "A": round((positive / total) * 150)},
         {"subject": "Civic Actions",      "A": min(helping * 30, 150)},
         {"subject": "Non-Littering",      "A": max(0, 150 - littering * 25)},
-        {"subject": "Non-Spitting",       "A": max(0, 150 - spitting * 25)},
+
         {"subject": "Overall Score",      "A": min(current_score, 150)},
     ]
 

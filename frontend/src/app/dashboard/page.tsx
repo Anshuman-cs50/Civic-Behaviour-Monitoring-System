@@ -57,7 +57,7 @@ export default function UserDashboardPage() {
         { subject: "Rule Adherence",  A: 75 },
         { subject: "Civic Actions",   A: 75 },
         { subject: "Non-Littering",   A: 75 },
-        { subject: "Non-Spitting",    A: 75 },
+
         { subject: "Overall Score",   A: 75 },
       ];
 

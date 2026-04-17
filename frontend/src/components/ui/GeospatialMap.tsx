@@ -50,12 +50,17 @@ export default function GeospatialMap() {
         blur: 20,
         maxZoom: 17,
         gradient: { 0.4: '#3b82f6', 0.6: '#f59e0b', 0.8: '#ef4444', 1.0: '#ef4444' }
-      }).addTo(map);
+      }) as L.Layer;
+      heatLayerRef.current.addTo(map);
     }
 
     return () => {
-      map.remove();
-      leafletInstance.current = null;
+      if (leafletInstance.current) {
+        leafletInstance.current.remove();
+        leafletInstance.current = null;
+      }
+      heatLayerRef.current = null;
+      markersRef.current = null;
     };
   }, []);
 
@@ -84,7 +89,9 @@ export default function GeospatialMap() {
     // 1. Update Heat Layer
     // Format: [lat, lng, weight]
     const heatPoints = heatmapData.map(d => [d.lat, d.lng, Math.min(1.0, d.incidents / maxIncidents)]);
-    heatLayerRef.current.setLatLngs(heatPoints);
+    if ((heatLayerRef.current as any)._map) {
+      heatLayerRef.current.setLatLngs(heatPoints);
+    }
 
     // 2. Update Markers
     markersRef.current.clearLayers();
