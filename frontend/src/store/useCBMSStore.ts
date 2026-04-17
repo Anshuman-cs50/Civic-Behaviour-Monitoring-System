@@ -77,9 +77,21 @@ interface CBMSState {
   setVideoConnected: (v: boolean) => void;
   setAlertConnected: (v: boolean) => void;
 
+  // Global Error State
+  error: string | null;
+  setError: (e: string | null) => void;
+
   // Stream status (polled from backend)
   streamStatus:    StreamStatus | null;
   setStreamStatus: (s: StreamStatus) => void;
+
+  // User Profile Images (Base64)
+  userImages: Record<string, string>;
+  setUserImage: (name: string, b64: string) => void;
+
+  // User Passwords (Local-only security layer)
+  userPasswords: Record<string, string>;
+  setUserPassword: (name: string, pass: string) => void;
 
   // Detection System
   detectionMode:   DetectionMode;
@@ -88,8 +100,8 @@ interface CBMSState {
   setActiveStream: (cameraId: string, status: string) => void;
 
   // Enhancements: Multi-Pipeline State
-  activePipeline: 'overview' | 'activity' | 'smoking' | 'roadSafety';
-  setActivePipeline: (p: 'overview' | 'activity' | 'smoking' | 'roadSafety') => void;
+  activePipeline: 'overview' | 'activity' | 'smoking' | 'roadSafety' | 'settings';
+  setActivePipeline: (p: 'overview' | 'activity' | 'smoking' | 'roadSafety' | 'settings') => void;
   
   pipelineData: {
     activity: { incidents: any[]; trends: any[]; hotspots: any[] };
@@ -116,7 +128,13 @@ export const useCBMSStore = create<CBMSState>()(
       alerts: [],
       pushAlert: (a) =>
         set((s) => {
-          const withTs  = { ...a, timestamp: new Date().toISOString() };
+          // Prevent duplicates if backend/WS sends same alert
+          const isDup = s.alerts.some(existing => 
+            existing.timestamp === a.timestamp && existing.person_name === a.person_name
+          );
+          if (isDup) return s;
+
+          const withTs  = { ...a, timestamp: a.timestamp || new Date().toISOString() };
           const trimmed = [withTs, ...s.alerts].slice(0, 50);
           const histPt: ScorePoint = {
             timestamp: withTs.timestamp!,
@@ -141,8 +159,23 @@ export const useCBMSStore = create<CBMSState>()(
       setVideoConnected: (v) => set({ videoConnected: v }),
       setAlertConnected: (v) => set({ alertConnected: v }),
 
+      // ── Error ──────────────────────────────────────────
+      error: null,
+      setError: (e) => set({ error: e }),
+
+      // ── User Data ──────────────────────────────────────
+      userImages: {},
+      setUserImage: (name, b64) => 
+        set(s => ({ userImages: { ...s.userImages, [name]: b64 } })),
+
+      userPasswords: {},
+      setUserPassword: (name, pass) =>
+        set(s => ({ userPasswords: { ...s.userPasswords, [name]: pass } })),
+
       // ── Stream ────────────────────────────────────────
       streamStatus:    null,
+      setStreamStatus: (s) => set({ streamStatus: s }),
+
       // ── Detection System ──────────────────────────────
       detectionMode:   'activity',
       setDetectionMode: (mode) => set({ detectionMode: mode }),
@@ -161,11 +194,13 @@ export const useCBMSStore = create<CBMSState>()(
     }),
     {
       name:    "cbms-auth",
-      // Persist auth, alerts, and scoreHistory as per PRD
+      // Persist auth, alerts, scoreHistory and userImages
       partialize: (s) => ({ 
         auth: s.auth,
         alerts: s.alerts,
-        scoreHistory: s.scoreHistory
+        scoreHistory: s.scoreHistory,
+        userImages: s.userImages,
+        userPasswords: s.userPasswords
       }),
     }
   )

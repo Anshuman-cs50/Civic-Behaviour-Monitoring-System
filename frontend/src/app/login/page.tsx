@@ -1,175 +1,143 @@
 "use client";
-// frontend/src/app/login/page.tsx
-// Glassmorphism login page — Admin tab + User tab with consent checkbox.
 
-import { useState, useId } from "react";
-import { useRouter } from "next/navigation";
-import { authApi } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { authApi, personsApi } from "@/lib/api";
 import { useCBMSStore } from "@/store/useCBMSStore";
-
-type Tab = "admin" | "user";
+import Link from "next/link";
 
 export default function LoginPage() {
-  const router   = useRouter();
-  const setAuth  = useCBMSStore((s) => s.setAuth);
-  const checkId  = useId();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const setAuth = useCBMSStore((s) => s.setAuth);
+  const userPasswords = useCBMSStore((s) => s.userPasswords);
 
-  const [tab,      setTab]      = useState<Tab>("admin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [consent,  setConsent]  = useState(false);
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+
+  useEffect(() => {
+    if (searchParams.get("signup") === "success") {
+      setSuccessMsg("Account created successfully. Please sign in.");
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccessMsg("");
 
-    if (tab === "user" && !consent) {
-      setError("You must accept the consent agreement to continue.");
-      return;
+    if (!username.trim() || !password) {
+      return setError("Username and password are required");
     }
 
     setLoading(true);
     try {
-      const res = await authApi.login(
-        tab === "admin" ? username : "user",
-        password,
-        consent,
-      );
-      setAuth({ token: res.token, role: res.role, username: res.username });
-      router.push(res.role === "admin" ? "/admin" : "/dashboard");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      // 1. Admin Logic
+      if (username === "admin" && password === "cbms2026") {
+        setAuth({ token: "admin-token", role: "admin", username: "admin" });
+        localStorage.setItem("sessionUser", "admin");
+        router.push("/admin");
+        return;
+      }
+
+      // 2. User Logic
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      const userData = users[username];
+
+      if (!userData || userData.password !== password) {
+        throw new Error("Invalid credentials");
+      }
+
+      // 3. Save session
+      localStorage.setItem("sessionUser", username);
+      setAuth({ 
+        token: `simulated-token-${username}`, 
+        role: "user", 
+        username: username 
+      });
+
+      // 4. Redirect
+      router.push("/dashboard");
+
+    } catch (err: any) {
+      setError(err.message || "Invalid credentials");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-gradient-animated flex items-center justify-center p-4">
-      {/* Background blobs */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-indigo-900/30 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-20 w-[400px] h-[400px] rounded-full bg-purple-900/25 blur-[100px]" />
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
-        {/* Logo / header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 mb-4">
-            <svg className="w-7 h-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M12 4.5C7.305 4.5 3.375 7.56 2.25 12c1.125 4.44 5.055 7.5 9.75 7.5s8.625-3.06 9.75-7.5c-1.125-4.44-5.055-7.5-9.75-7.5z" />
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+    <main className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-[400px] space-y-8">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-xl shadow-indigo-100 mb-6">
+            <span className="font-black text-xl">CB</span>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">CBMS</h1>
-          <p className="text-zinc-400 text-sm mt-1">Civic Behaviour Monitoring System</p>
+          <h1 className="text-3xl font-black text-zinc-900 tracking-tight uppercase">CBMS</h1>
+          <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em] mt-1">Civic Behaviour Monitoring System</p>
         </div>
 
-        {/* Card */}
-        <div className="glass-strong rounded-2xl p-8">
-          {/* Tabs */}
-          <div className="flex mb-6 border-b border-white/10">
-            {(["admin", "user"] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setTab(t); setError(""); }}
-                className={`flex-1 pb-3 text-sm font-medium capitalize transition-colors ${
-                  tab === t ? "tab-active text-indigo-300" : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                {t === "admin" ? "🛡 Admin" : "👤 User"}
-              </button>
-            ))}
-          </div>
+        <div className="bg-white border border-zinc-200 rounded-[32px] p-8 shadow-sm">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Identity Identifier</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username or Admin ID"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-5 py-4 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+              />
+            </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username (admin only) */}
-            {tab === "admin" && (
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1.5 uppercase tracking-wide">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
-                  required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition"
-                />
-              </div>
-            )}
-
-            {/* Password */}
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1.5 uppercase tracking-wide">
-                Password
-              </label>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Secure Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                required
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-5 py-4 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
             </div>
 
-            {/* Consent (user only) */}
-            {tab === "user" && (
-              <label
-                htmlFor={checkId}
-                className="flex gap-3 items-start cursor-pointer p-3 rounded-lg bg-white/[0.03] border border-white/8 hover:bg-white/[0.06] transition"
-              >
-                <input
-                  id={checkId}
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 accent-indigo-500 w-4 h-4 rounded cursor-pointer"
-                />
-                <span className="text-xs text-zinc-400 leading-relaxed">
-                  I understand this system monitors public spaces for civic safety purposes
-                  and that my access will be logged. I consent to these terms.
-                </span>
-              </label>
+            {successMsg && (
+              <div className="bg-emerald-50 text-emerald-600 p-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-center border border-emerald-100">
+                {successMsg}
+              </div>
             )}
 
-            {/* Error */}
             {error && (
-              <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+              <div className="bg-red-50 text-red-500 p-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-center border border-red-100">
                 {error}
-              </p>
+              </div>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full rounded-lg py-2.5 text-sm font-semibold mt-2"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-4 text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Authenticating…
-                </span>
-              ) : (
-                `Sign in as ${tab === "admin" ? "Admin" : "User"}`
-              )}
+              {loading ? "Authorizing..." : "Authorize Access"}
             </button>
           </form>
+
+          <div className="mt-8 pt-6 border-t border-zinc-100 text-center">
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+              New Citizen?{" "}
+              <Link href="/signup" className="text-indigo-600 hover:text-indigo-800">
+                Enroll Identity
+              </Link>
+            </p>
+          </div>
         </div>
 
-        <p className="text-center text-zinc-600 text-xs mt-6">
-          CBMS v2 · Hackathon Build · {new Date().getFullYear()}
-        </p>
+        <div className="text-center">
+          <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-[0.3em]">Secure Node v2.5.0</p>
+        </div>
       </div>
     </main>
   );

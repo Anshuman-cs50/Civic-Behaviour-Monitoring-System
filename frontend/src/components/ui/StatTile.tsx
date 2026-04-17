@@ -1,17 +1,20 @@
-export function StatTile({ label, value, accent, trend }: { label: string; value: string | number; accent?: boolean; trend?: number }) {
+export function StatTile({ label, value, color = "bg-white text-zinc-800 border-zinc-100", trend }: { label: string; value: string | number; color?: string; trend?: number }) {
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center transition-all hover:bg-zinc-50 shadow-sm shadow-zinc-200/50">
-      <p className="text-[10px] uppercase tracking-wide text-zinc-400 font-bold mb-1 flex items-center justify-center gap-1">
-        {label}
+    <div className={`${color} border rounded-[24px] p-5 shadow-sm shadow-zinc-200/40 relative overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98]`}>
+      <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 blur-2xl rounded-full translate-x-1/2 -translate-y-1/2" />
+      
+      <div className="flex justify-between items-start mb-2">
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">{label}</span>
         {trend !== undefined && (
-          <span className={`text-[10px] ${trend > 0 ? "text-emerald-500" : trend < 0 ? "text-red-500" : "text-zinc-400"}`}>
-            {trend > 0 ? "↑" : trend < 0 ? "↓" : "—"} {Math.abs(trend)}%
-          </span>
+          <div className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black ${trend > 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"}`}>
+            {trend > 0 ? "↑" : "↓"} {Math.abs(trend)}%
+          </div>
         )}
-      </p>
-      <p className={`text-xl sm:text-2xl font-bold font-mono tracking-tight ${accent ? "text-red-600" : "text-zinc-900"}`}>
+      </div>
+
+      <div className="text-2xl font-black tracking-tight flex items-baseline gap-1">
         {value}
-      </p>
+      </div>
     </div>
   );
 }
