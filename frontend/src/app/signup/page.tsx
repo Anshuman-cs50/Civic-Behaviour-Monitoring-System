@@ -10,7 +10,7 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,8 +18,7 @@ export default function SignupPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      console.log("Image selected:", selectedFile.name);
-      setFile(selectedFile);
+      setImageFile(selectedFile);
       const reader = new FileReader();
       reader.onloadend = () => setPreview(reader.result as string);
       reader.readAsDataURL(selectedFile);
@@ -28,54 +27,40 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Signup triggered");
     setError("");
 
-    // 1. Validate
     if (!name.trim()) return setError("Name is required");
     if (password.length < 6) return setError("Password must be at least 6 characters");
     if (password !== confirmPassword) return setError("Passwords do not match");
-    if (!file) return setError("Image required");
+    if (!imageFile) return setError("Image required");
 
     setLoading(true);
 
     try {
       const formData = new FormData();
       formData.append("name", name);
-      formData.append("file", file);
+      formData.append("file", imageFile);
 
-      // 2. Call backend
       const res = await fetch("http://localhost:8000/enroll", {
         method: "POST",
         body: formData,
       });
 
-      console.log("API response:", res);
-
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        // Only show real errors, avoid fake auth errors
-        if (errData.detail && typeof errData.detail === 'string') {
-          if (errData.detail.toLowerCase().includes("already exists")) {
-            throw new Error("User already exists");
-          }
-        }
         throw new Error("Signup failed");
       }
 
-      // 3. Save locally
-      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      // Save locally since backend has no password handling
+      const users = JSON.parse(localStorage.getItem("users") || "{}");
       users[name] = {
         password: password,
-        image: preview
+        image: preview,
       };
-      localStorage.setItem('users', JSON.stringify(users));
+      localStorage.setItem("users", JSON.stringify(users));
 
-      // 4. Redirect
       router.push("/login");
 
     } catch (err: any) {
-      console.error("Signup error:", err);
       setError(err.message || "Signup failed");
     } finally {
       setLoading(false);
@@ -96,7 +81,7 @@ export default function SignupPage() {
         <div className="bg-white border border-zinc-200 rounded-[32px] p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="flex flex-col items-center mb-6">
-              <div className="relative w-24 h-24 rounded-full bg-zinc-100 border-2 border-dashed border-zinc-200 flex items-center justify-center overflow-hidden group cursor-pointer hover:border-indigo-500 transition-all">
+              <div className="relative w-24 h-24 rounded-full bg-zinc-100 border-2 border-dashed border-zinc-200 flex items-center justify-center overflow-hidden cursor-pointer hover:border-indigo-500 transition-all">
                 {preview ? (
                   <img src={preview} alt="Preview" className="w-full h-full object-cover" />
                 ) : (
@@ -116,7 +101,7 @@ export default function SignupPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter your name"
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-5 py-4 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
             </div>
 
@@ -127,7 +112,7 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-5 py-4 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
             </div>
 
@@ -138,7 +123,7 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-5 py-4 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
             </div>
 
@@ -149,7 +134,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-4 text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-3 text-xs font-black uppercase tracking-[0.1em] transition-all disabled:opacity-50"
             >
               {loading ? "Registering..." : "Create Citizen ID"}
             </button>

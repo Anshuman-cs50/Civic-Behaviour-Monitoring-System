@@ -49,10 +49,10 @@ export const authApi = {
 // ── Stream ────────────────────────────────────────────────
 
 export const streamApi = {
-  start: (ngrok_url: string, source: string, chunk_sec: number, fps: number) =>
+  start: (ngrok_url: string, source: string, chunk_sec: number, fps: number, pipeline_type: string = "activity") =>
     apiFetch<{ status: string }>("/stream/start", {
       method: "POST",
-      body: JSON.stringify({ ngrok_url, source, chunk_sec, fps }),
+      body: JSON.stringify({ ngrok_url, source, chunk_sec, fps, pipeline_type }),
     }),
 
   stop: () =>

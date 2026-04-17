@@ -59,7 +59,7 @@ export function SmokingDashboard() {
   const handleStart = async () => {
     if (!ngrokUrl) return;
     try {
-      await streamApi.start(ngrokUrl, source, 10, 15);
+      await streamApi.start(ngrokUrl, source, 10, 15, "smoking");
     } catch {}
   };
 

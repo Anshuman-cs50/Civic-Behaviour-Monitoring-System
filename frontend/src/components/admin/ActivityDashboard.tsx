@@ -62,7 +62,7 @@ export function ActivityDashboard() {
   const handleStart = async () => {
     if (!ngrokUrl) return;
     try {
-      await streamApi.start(ngrokUrl, source, 10, 15);
+      await streamApi.start(ngrokUrl, source, 10, 15, "activity");
     } catch {}
   };
 

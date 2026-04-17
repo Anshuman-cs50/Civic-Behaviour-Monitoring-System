@@ -104,6 +104,7 @@ class StreamStartRequest(BaseModel):
     source:    str  = "0"           # "0" = webcam, or a filename in unprocessed_clips
     chunk_sec: int  = 10
     fps:       int  = 15
+    pipeline_type: str = "activity"
 
 class PlayRequest(BaseModel):
     speed: float = 1.0
@@ -261,6 +262,7 @@ async def stream_start(
 
     def on_alert_sync(alert: dict):
         """Called from the StreamManager upload thread — fire and forget."""
+        alert["pipeline_type"] = body.pipeline_type
         coro = _broadcast_and_log_alert(alert)
         asyncio.run_coroutine_threadsafe(coro, state.loop)
 
@@ -328,7 +330,6 @@ async def enroll(
     name: str = Form(...),
     file: UploadFile = File(...),
     label: str = Form(default=""),          # optional: 'front', 'left', 'right', etc.
-    _: dict = Depends(_get_admin),
 ):
     """
     Enroll a new person OR add a first photo.
